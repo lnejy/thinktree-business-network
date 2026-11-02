@@ -1,0 +1,65 @@
+// Run with: node test-flow.cjs (local API and UI must be running).
+const { chromium } = require('playwright');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+
+(async () => {
+  fs.mkdirSync('test-results', { recursive: true });
+  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    const errors = [];
+    const companyName = `ThinkTree UI Test ${Date.now()}`;
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto('http://localhost:8443');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await page.getByRole('button', { name: 'Add Card', exact: true }).click();
+    await page.getByRole('button', { name: '샘플 1 검토', exact: true }).click();
+    await page.getByLabel('Company', { exact: false }).waitFor();
+    await page.screenshot({ path: 'test-results/review-desktop.png', fullPage: true });
+    await page.getByRole('button', { name: 'Confirm & Save' }).click();
+    await page.getByRole('alert').filter({ hasText: '회사명과 이름' }).waitFor();
+    await page.getByLabel('Company', { exact: false }).fill(companyName);
+    await page.getByLabel('Branch / Office').fill('서울 본사');
+    await page.getByLabel('Department', { exact: true }).fill('영업부');
+    await page.getByLabel('Team', { exact: true }).fill('개발 1팀');
+    await page.getByRole('button', { name: 'Save as Draft' }).click();
+    const row = page.getByRole('row').filter({ hasText: companyName });
+    await row.getByRole('button', { name: 'Review' }).click();
+    assert.equal(await page.getByLabel('Branch / Office').inputValue(), '서울 본사');
+    await page.getByRole('button', { name: 'Confirm & Save' }).click();
+    await page.getByRole('main').getByRole('heading', { name: 'Card Detail', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'View org chart', exact: false }).click();
+    await page.getByRole('button', { name: 'Organization Chart', exact: true }).click();
+    await page.getByText('서울 본사', { exact: true }).waitFor();
+    await page.getByText('개발 1팀', { exact: true }).waitFor();
+    await page.screenshot({ path: 'test-results/organization-desktop.png', fullPage: true });
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await page.getByPlaceholder('Search companies, contacts, employees, cards…').fill(companyName);
+    await page.getByText(companyName, { exact: true }).first().waitFor();
+    await page.reload();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await page.getByPlaceholder('Search companies, contacts, employees, cards…').fill(companyName);
+    await page.getByText(companyName, { exact: true }).first().waitFor();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: 'Add Card', exact: true }).click();
+    await page.getByRole('heading', { name: '명함 등록', exact: true }).waitFor();
+    await page.screenshot({ path: 'test-results/upload-mobile.png', fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.getByLabel('명함 언어').selectOption('ko');
+    await page.getByLabel('명함 이미지 파일', { exact: true }).setInputFiles(require('node:path').join(__dirname, '../backend/demo/sample2.png'));
+    await page.getByRole('button', { name: 'OCR 인식 시작', exact: true }).click();
+    await page.getByRole('button', { name: '인식 결과 검토하기 →', exact: true }).waitFor({ timeout: 180000 });
+    await page.getByRole('button', { name: '인식 결과 검토하기 →', exact: true }).click();
+    await page.getByText('OCR 원문', { exact: false }).first().waitFor();
+    assert.ok((await page.locator('pre').first().textContent()).includes('@'));
+    assert.ok((await page.getByLabel('Email', { exact: true }).inputValue()).includes('@'));
+    await page.screenshot({ path: 'test-results/live-ocr-desktop.png', fullPage: true });
+    await page.getByRole('button', { name: 'Reject', exact: true }).click();
+    await page.getByRole('main').getByRole('heading', { name: 'Incoming Cards', exact: true }).waitFor();
+    assert.deepEqual(errors, []);
+    console.log('PASS: sample, validation, draft, confirm, tree, search, reload, mobile, real image upload + live OCR + review + reject, zero browser errors');
+  } finally { await browser.close(); }
+})().catch(e => { console.error(e); process.exitCode = 1; });

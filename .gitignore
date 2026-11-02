@@ -1,0 +1,26 @@
+# Local dependencies, secrets, runtime output and editor settings
+**/node_modules/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/.env
+**/.env.*
+!**/.env.example
+**/.vite/
+**/dist/
+**/test-results/
+**/.vscode/
+**/*.log
+**/.DS_Store
+/backend/runtime/
+
+# Private business-card evaluation inputs and generated reports stay local
+/backend/cards/*
+!/backend/cards/.gitkeep
+/backend/gt/*
+!/backend/gt/.gitkeep
+/backend/gt_fields/
+/backend/out/*
+!/backend/out/.gitkeep
+/backend/OCR_테스트_결과.html
