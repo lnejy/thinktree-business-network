@@ -10,6 +10,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field
 
 from card_service import BASE, FIELD_KEYS, Pipeline, Store, map_structured, now
+from evaluation_import import import_evaluation
 
 MAX_BYTES = 15 * 1024 * 1024
 Image.MAX_IMAGE_PIXELS = 25_000_000
@@ -19,6 +20,7 @@ pipeline = Pipeline(store)
 
 @asynccontextmanager
 async def lifespan(app):
+    import_evaluation(store)
     for card in store.all():
         if card['status'] in ('uploading', 'ocr_processing', 'ai_structuring'):
             store.update(card['id'], status='failed', error='서버가 재시작되어 처리가 중단됐습니다. 재시도하세요.')
@@ -46,6 +48,23 @@ def cards():
     return store.all()
 
 
+@app.post('/api/evaluation/import')
+def import_saved_evaluation():
+    with store.lock:
+        return import_evaluation(store)
+
+
+@app.get('/api/evaluation/report')
+def evaluation_report():
+    path = BASE / 'OCR_테스트_결과.html'
+    if not path.is_file():
+        raise HTTPException(404, '저장된 OCR 보고서가 없습니다.')
+    return FileResponse(path, media_type='text/html', headers={
+        'Content-Security-Policy': "default-src 'none'; img-src data: 'self'; style-src 'unsafe-inline'; sandbox",
+        'Cache-Control': 'no-store',
+    })
+
+
 @app.get('/api/cards/{card_id}')
 def card_detail(card_id: str):
     return get_card(card_id)
@@ -58,6 +77,30 @@ def image(card_id: str):
     if not path.is_file():
         raise HTTPException(404, '원본 이미지가 없습니다.')
     return FileResponse(path, media_type='image/png', headers={'Cache-Control': 'private, max-age=3600'})
+
+
+def stored_asset(card_id, kind):
+    card = get_card(card_id)
+    extension = card.get(f'{kind}Extension')
+    if extension not in ('.jpg', '.jpeg', '.png', '.bmp', '.webp'):
+        if kind == 'original':
+            return image(card_id)
+        raise HTTPException(404, 'OCR 영역 이미지가 없습니다.')
+    directory = store.originals if kind == 'original' else store.visualizations
+    path = directory / f'{card["id"]}{extension}'
+    if not path.is_file():
+        raise HTTPException(404, '이미지 파일이 없습니다.')
+    return FileResponse(path, headers={'Cache-Control': 'private, max-age=3600'})
+
+
+@app.get('/api/cards/{card_id}/original')
+def original_image(card_id: str):
+    return stored_asset(card_id, 'original')
+
+
+@app.get('/api/cards/{card_id}/ocr-image')
+def ocr_image(card_id: str):
+    return stored_asset(card_id, 'visualization')
 
 
 def normalize_image(content):
@@ -153,6 +196,10 @@ def reject(card_id: str):
         with store.connect() as db:
             db.execute('DELETE FROM cards WHERE id=?', (card_id,))
         (store.images / f'{card["id"]}.png').unlink(missing_ok=True)
+        for kind, directory in [('original', store.originals), ('visualization', store.visualizations)]:
+            extension = card.get(f'{kind}Extension')
+            if extension in ('.jpg', '.jpeg', '.png', '.bmp', '.webp'):
+                (directory / f'{card["id"]}{extension}').unlink(missing_ok=True)
 
 
 @app.post('/api/samples/{sample_id}', status_code=201)

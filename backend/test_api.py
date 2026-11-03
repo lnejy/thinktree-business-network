@@ -1,8 +1,10 @@
 """Offline contract tests; no model download or external API calls."""
 import copy
 import io
+import json
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -10,6 +12,7 @@ from PIL import Image
 
 import api
 from card_service import Pipeline, Store, local_fields, map_structured
+from evaluation_import import import_evaluation, ocr_fingerprint
 
 
 class CardApiTests(unittest.TestCase):
@@ -18,7 +21,7 @@ class CardApiTests(unittest.TestCase):
         self.store = Store(self.temp.name)
         self.pipeline = Pipeline(self.store)
         self.patches = [patch.object(api, 'store', self.store), patch.object(api, 'pipeline', self.pipeline),
-                        patch.object(self.pipeline, 'submit')]
+                        patch.object(self.pipeline, 'submit'), patch.object(api, 'import_evaluation')]
         for p in self.patches:
             p.start()
         self.client = TestClient(api.app)
@@ -105,6 +108,69 @@ class CardApiTests(unittest.TestCase):
         self.assertEqual(result['extracted']['company']['value'], 'Example')
         self.assertIn('Name: Test', result['ocrRawText'])
         self.assertTrue(any('외부 AI' in w for w in result['warnings']))
+
+    def test_saved_evaluation_import_original_results_and_idempotence(self):
+        source = Path(self.temp.name) / 'source'
+        for folder in ('cards', 'out', 'out/images', 'gt'):
+            (source / folder).mkdir(parents=True, exist_ok=True)
+        name = '명함 테스트 (1)'
+        original = source / 'cards' / f'{name}.jpg'
+        Image.new('RGB', (100, 60), 'white').save(original, 'JPEG')
+        Image.new('RGB', (100, 60), 'blue').save(source / 'out/images' / f'{name}_ocr_res_img.png')
+        lines = ['Company: Example', 'Name: Test', 'hello@example.com']
+        payload = dict(lines=lines, language='en', avg_score=0.9, chosen_model='korean',
+                       raw={'korean': {'texts': lines, 'scores': [0.9, 0.8, 1.0]},
+                            'default': {'texts': lines, 'scores': [0.7, 0.8, 0.9]}})
+        (source / 'out' / f'{name}.json').write_text(json.dumps(payload), encoding='utf-8')
+        (source / 'gt' / f'{name}.txt').write_text('\n'.join(lines), encoding='utf-8')
+        result = import_evaluation(self.store, source)
+        self.assertEqual(result['imported'], 1)
+        card = self.store.all()[0]
+        self.assertEqual(card['source'], 'evaluation')
+        self.assertEqual(card['sourceFileName'], original.name)
+        self.assertEqual(card['extracted']['company']['value'], 'Example')
+        self.assertEqual(card['evaluation']['coverage'], 100.0)
+        self.assertEqual(card['evaluation']['accuracy'], 100.0)
+        self.assertEqual(card['evaluation']['models'][0]['confidence'], 90.0)
+        self.assertEqual(self.client.get(card['originalUrl']).content, original.read_bytes())
+        self.assertEqual(self.client.get(card['visualizationUrl']).status_code, 200)
+        self.assertEqual(self.client.get(card['imageUrl']).status_code, 200)
+        card['extracted']['company']['value'] = 'User edit'
+        self.client.put(f'/api/cards/{card["id"]}/review', json={'extracted': card['extracted'], 'action': 'draft'})
+        self.assertEqual(import_evaluation(self.store, source)['existing'], 1)
+        self.assertEqual(self.store.get(card['id'])['extracted']['company']['value'], 'User edit')
+        self.assertEqual(len(self.store.all()), 1)
+        self.assertEqual(self.client.delete(f'/api/cards/{card["id"]}').status_code, 204)
+        self.assertEqual(import_evaluation(self.store, source)['imported'], 0)
+        self.assertEqual(self.store.all(), [])
+
+    def test_saved_evaluation_without_ground_truth(self):
+        source = Path(self.temp.name) / 'source'
+        (source / 'cards').mkdir(parents=True)
+        (source / 'out').mkdir()
+        Image.new('RGB', (100, 60), 'white').save(source / 'cards' / 'test.png')
+        (source / 'out/test.json').write_text(json.dumps(dict(lines=['Test'], avg_score=0.5)), encoding='utf-8')
+        self.assertEqual(import_evaluation(self.store, source)['imported'], 1)
+        report = self.store.all()[0]['evaluation']
+        self.assertFalse(report['hasGroundTruth'])
+        self.assertIsNone(report['coverage'])
+
+    def test_saved_summary_metrics_work_without_private_ground_truth(self):
+        source = Path(self.temp.name) / 'source'
+        (source / 'cards').mkdir(parents=True)
+        (source / 'out').mkdir()
+        payload = dict(lines=['Test'], avg_score=0.5)
+        metrics = {}
+        for name, digest in [('valid', ocr_fingerprint(payload)), ('stale', 'incorrect-hash')]:
+            Image.new('RGB', (100, 60), 'white').save(source / 'cards' / f'{name}.png')
+            (source / 'out' / f'{name}.json').write_text(json.dumps(payload, indent=4) + '\r\n', encoding='utf-8')
+            metrics[f'{name}.png'] = dict(ocrSha256=digest, report=dict(coverage=0.75, accuracy=0.8, recall=0.9))
+        (source / 'evaluation_metrics.json').write_text(json.dumps(metrics), encoding='utf-8')
+        self.assertEqual(import_evaluation(self.store, source)['imported'], 2)
+        results = {c['sourceFileName']: c['evaluation'] for c in self.store.all()}
+        self.assertEqual(results['valid.png']['coverage'], 75.0)
+        self.assertEqual(results['valid.png']['accuracy'], 80.0)
+        self.assertFalse(results['stale.png']['hasGroundTruth'])
 
 
 if __name__ == '__main__':

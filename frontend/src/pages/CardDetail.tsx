@@ -2,6 +2,8 @@ import React from 'react';
 import { PageName, Badge, AIBadge, Btn } from '../Layout';
 import { IconPhone, IconMail, IconMapPin, IconGlobe, IconBuilding, IconUser, IconEdit, IconDownload } from '../icons';
 import { confirmedCards, incomingCards, employees, companies, contacts } from '../data';
+import type { LiveCard } from '../cardApi';
+import { OriginalImage, OcrResults } from '../components/CardEvidence';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -9,7 +11,7 @@ interface Props {
 }
 
 export default function CardDetail({ navigate, cardId }: Props) {
-  const card = [...confirmedCards, ...incomingCards].find(c => c.id === cardId) || confirmedCards[0];
+  const card = ([...confirmedCards, ...incomingCards].find(c => c.id === cardId) || confirmedCards[0]) as LiveCard;
   const owner = employees.find(e => e.id === card.ownerId);
   const company = companies.find(c => c.id === card.companyId);
   const contact = contacts.find(c => c.id === card.contactId);
@@ -23,7 +25,7 @@ export default function CardDetail({ navigate, cardId }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: '#0F172A', letterSpacing: '-0.02em' }}>Card Detail</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>Confirmed business card · AI-extracted and human-verified</p>
+          <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>{card.status === 'reviewed' ? '확정한 명함' : '명함 원본 및 OCR 결과 · 검토 후 확정하세요'}</p>
         </div>
         <div className="flex items-center gap-2">
           <Btn variant="secondary" size="sm" icon={IconDownload}>Export</Btn>
@@ -31,17 +33,16 @@ export default function CardDetail({ navigate, cardId }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-6">
+      <div className="grid lg:grid-cols-5 gap-6">
         {/* Left: Card image */}
-        <div className="col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4">
           {/* Card visual */}
           <div className="bg-white rounded-xl border overflow-hidden" style={{ borderColor: '#E2E8F0' }}>
             <div className="px-4 py-3 border-b" style={{ borderColor: '#F1F5F9' }}>
               <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Business Card</span>
             </div>
             <div className="p-5">
-              {card.imageUrl && <img src={card.imageUrl} alt="명함 원본" className="w-full rounded-lg mb-4 object-contain" />}
-              <div
+              {card.imageUrl ? <OriginalImage card={card} /> : <div
                 className="rounded-xl shadow-md overflow-hidden"
                 style={{ aspectRatio: '1.75', background: 'white', border: '1px solid #E2E8F0', padding: '20px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative' }}
               >
@@ -67,9 +68,9 @@ export default function CardDetail({ navigate, cardId }: Props) {
                     {x.address.value && <div className="text-xs" style={{ color: '#94A3B8' }}>{x.address.value}</div>}
                   </div>
                 </div>
-              </div>
+              </div>}
               <div className="flex items-center justify-between mt-3">
-                <Badge variant="success">Confirmed</Badge>
+                <Badge variant={card.status === 'reviewed' ? 'success' : 'warning'}>{card.status === 'reviewed' ? 'Confirmed' : '검토 대기'}</Badge>
                 <div className="flex items-center gap-1">
                   <AIBadge />
                   <span className="text-xs" style={{ color: '#94A3B8' }}>{card.confidence}% confidence</span>
@@ -102,7 +103,8 @@ export default function CardDetail({ navigate, cardId }: Props) {
         </div>
 
         {/* Right: Contact info */}
-        <div className="col-span-3 space-y-4">
+        <div className="lg:col-span-3 space-y-4">
+          {!!card.ocrRawText && <div className="bg-white border border-slate-200 rounded-xl p-5"><h2 className="font-semibold mb-4">OCR 인식·테스트 결과</h2><OcrResults card={card} /></div>}
           <div className="bg-white rounded-xl border" style={{ borderColor: '#E2E8F0' }}>
             <div className="px-5 py-4 border-b" style={{ borderColor: '#F1F5F9' }}>
               <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Contact Information</span>

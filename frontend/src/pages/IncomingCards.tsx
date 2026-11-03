@@ -10,6 +10,19 @@ interface Props {
 
 export default function IncomingCards({ navigate }: Props) {
   const [error, setError] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [source, setSource] = useState('all');
+  const importSaved = async () => {
+    setImporting(true); setError('');
+    try {
+      const result = await request<{ imported: number; existing: number; errors: string[] }>('/api/evaluation/import', { method: 'POST' });
+      await refreshCards();
+      setNotice(`${result.imported}장 추가 · 기존 ${result.existing}장 유지${result.errors.length ? ` · 불러오기 실패 ${result.errors.length}장` : ''}`);
+      setSource('evaluation');
+    } catch (e) { setError((e as Error).message); }
+    finally { setImporting(false); }
+  };
   const retry = async (id: string) => {
     try { await request(`/api/cards/${id}/retry`, { method: 'POST' }); await refreshCards(); setError(''); }
     catch (e) { setError((e as Error).message); }
@@ -24,9 +37,12 @@ export default function IncomingCards({ navigate }: Props) {
     const q = search.toLowerCase();
     const matchSearch = !q ||
       (c.extracted.company.value || '').toLowerCase().includes(q) ||
-      (c.extracted.name.value || '').toLowerCase().includes(q);
+      (c.extracted.name.value || '').toLowerCase().includes(q) ||
+      ((c as LiveCard).sourceFileName || '').toLowerCase().includes(q) ||
+      ((c as LiveCard).ocrRawText || '').toLowerCase().includes(q);
     const matchStatus = filterStatus === 'all' || c.status === filterStatus;
-    return matchSearch && matchStatus;
+    const matchSource = source === 'all' || (source === 'evaluation' ? (c as LiveCard).source === 'evaluation' : isLiveCard(c.id) && (c as LiveCard).source !== 'evaluation');
+    return matchSearch && matchStatus && matchSource;
   });
 
   const statusCounts = {
@@ -37,15 +53,16 @@ export default function IncomingCards({ navigate }: Props) {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap gap-3 items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: '#0F172A', letterSpacing: '-0.02em' }}>Incoming Cards</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>Review mobile-captured cards after AI processing</p>
+          <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>명함 사진을 클릭하면 원본과 OCR 인식·테스트 결과를 확인할 수 있습니다.</p>
         </div>
-        <Btn variant="secondary" size="sm" icon={IconRefresh} onClick={() => { refreshCards().then(() => setError('')).catch(e => setError(e.message)); }}>Refresh</Btn>
+        <div className="flex flex-wrap gap-2 items-center"><a href="/api/evaluation/report" target="_blank" rel="noreferrer" className="text-xs text-blue-600 px-2">전체 OCR 보고서 ↗</a><Btn variant="secondary" size="sm" disabled={importing} onClick={importSaved}>{importing ? '불러오는 중…' : '기존 OCR 자료 불러오기'}</Btn><Btn variant="secondary" size="sm" icon={IconRefresh} onClick={() => { refreshCards().then(() => setError('')).catch(e => setError(e.message)); }}>Refresh</Btn></div>
       </div>
 
       {error && <p role="alert" className="text-red-600 text-sm">{error}</p>}
+      {notice && <p role="status" className="text-blue-700 bg-blue-50 p-3 rounded-lg text-sm">{notice}</p>}
       {/* Stats strip */}
       <div className="grid grid-cols-4 gap-3">
         {[
@@ -79,6 +96,7 @@ export default function IncomingCards({ navigate }: Props) {
 
       {/* Search + filter */}
       <div className="flex items-center gap-3">
+        <select aria-label="명함 자료 구분" value={source} onChange={e => setSource(e.target.value)} className="border rounded-lg px-3 py-2 text-sm"><option value="all">전체 자료</option><option value="evaluation">기존 OCR 테스트 명함</option><option value="upload">새로 등록한 명함</option></select>
         <div className="relative flex-1 max-w-sm">
           <div className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }}>
             <IconSearch size={15} />
@@ -86,7 +104,7 @@ export default function IncomingCards({ navigate }: Props) {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search by company or name…"
+            placeholder="회사·이름·파일명·OCR 원문 검색…"
             className="w-full border rounded-lg pl-9 pr-4 py-2 text-sm outline-none"
             style={{ borderColor: '#E2E8F0', color: '#0F172A' }}
             onFocus={e => (e.currentTarget.style.borderColor = '#2563EB')}
@@ -128,22 +146,24 @@ export default function IncomingCards({ navigate }: Props) {
               return (
                 <tr
                   key={card.id}
-                  className="border-b transition-colors"
+                  onClick={() => navigate('card-detail', { cardId: card.id })}
+                  className="border-b transition-colors cursor-pointer hover:bg-slate-50"
                   style={{
                     borderColor: '#F1F5F9',
                     background: isReady ? '#FFFEFB' : isFailed ? '#FFF9F9' : 'white',
                   }}
                 >
                   <td className="px-4 py-3">
-                    <div className="w-16 h-10 rounded flex items-center justify-center text-xs font-bold relative overflow-hidden" style={{ background: isProcessing ? '#F5F3FF' : '#EFF6FF' }}>
-                      {isProcessing ? (
+                    <button aria-label={`명함 상세: ${(card as LiveCard).sourceFileName || card.extracted.name.value || card.id}`} onClick={e => { e.stopPropagation(); navigate('card-detail', { cardId: card.id }); }} className="w-20 h-12 rounded flex items-center justify-center text-xs font-bold relative overflow-hidden border border-slate-200" style={{ background: isProcessing ? '#F5F3FF' : '#EFF6FF' }}>
+                      {card.imageUrl ? <img src={card.imageUrl} alt={(card as LiveCard).sourceFileName || '등록한 명함 사진'} className="w-full h-full object-contain" loading="lazy" /> : isProcessing ? (
                         <div className="ai-shimmer absolute inset-0" />
                       ) : (
                         <span style={{ color: '#2563EB', fontFamily: 'DM Mono, monospace', position: 'relative' }}>
                           {card.extracted.name.value ? card.extracted.name.value.slice(0, 2) : '??'}
                         </span>
                       )}
-                    </div>
+                    </button>
+                    {(card as LiveCard).sourceFileName && <span title={(card as LiveCard).sourceFileName} className="block text-xs text-slate-500 max-w-44 truncate mt-1">{(card as LiveCard).sourceFileName}</span>}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -160,6 +180,7 @@ export default function IncomingCards({ navigate }: Props) {
                     {formatDateTime(card.uploadedAt)}
                   </td>
                   <td className="px-4 py-3 text-sm" style={{ color: '#0F172A' }}>
+                    {(card as LiveCard).source === 'evaluation' && <span className="text-xs text-blue-600">[OCR 자료] </span>}
                     {(card as LiveCard).source === 'sample' && <span className="text-xs text-violet-600">[샘플] </span>}{!isLiveCard(card.id) && <span className="text-xs text-slate-400">[예시] </span>}{card.extracted.company.value || (
                       <span style={{ color: '#94A3B8' }}>—</span>
                     )}
@@ -183,7 +204,7 @@ export default function IncomingCards({ navigate }: Props) {
                       <span style={{ color: '#CBD5E1', fontSize: '12px' }}>—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                     {(isReady || card.status === 'reviewed') && (
                       <button
                         onClick={() => navigate('ai-recognition', { cardId: card.id })}

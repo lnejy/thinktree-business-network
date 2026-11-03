@@ -5,6 +5,13 @@ export interface LiveCard extends BusinessCard {
   source?: string; engine?: string; model?: string; language?: string;
   ocrRawText?: string; warnings?: string[]; error?: string;
   structured?: Record<string, unknown>; departmentPath?: string[];
+  sourceFileName?: string; originalUrl?: string; visualizationUrl?: string;
+  evaluation?: {
+    lineCount: number; hasGroundTruth: boolean;
+    coverage: number | null; accuracy: number | null; lineRecall: number | null;
+    models: Array<{ model: string; confidence: number; textCount: number; selected: boolean }>;
+    groundTruthDetails?: Array<{ ok: boolean; line: string; score: number }>;
+  };
 }
 const originals = structuredClone({ incomingCards, confirmedCards, companies, contacts, networkConnections });
 let current: LiveCard[] = [];

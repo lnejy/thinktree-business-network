@@ -10,7 +10,8 @@
     "format": "oxfmt",
     "typecheck": "tsc --noEmit",
     "test": "node test-data.cjs",
-    "test:e2e": "node test-flow.cjs"
+    "test:e2e": "node test-flow.cjs",
+    "test:evaluation": "node test-evaluation.cjs"
   },
   "dependencies": {
     "react": "^19.0.0",

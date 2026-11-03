@@ -32,6 +32,8 @@ class Store:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.images = self.directory / 'images'
         self.images.mkdir(exist_ok=True)
+        self.originals = self.directory / 'originals'
+        self.visualizations = self.directory / 'visualizations'
         self.db = self.directory / 'cards.sqlite3'
         with self.connect() as db:
             db.execute('CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, body TEXT NOT NULL)')

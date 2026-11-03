@@ -4,6 +4,7 @@ import { IconSparkle, IconCheck, IconX, IconAlertTriangle, IconEdit } from '../i
 import { incomingCards, confirmedCards, employees } from '../data';
 import type { BusinessCard, ConfidenceLevel } from '../data';
 import { saveReview, request, refreshCards, isLiveCard, type LiveCard } from '../cardApi';
+import { OriginalImage, OcrResults } from '../components/CardEvidence';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -124,7 +125,7 @@ export default function AIRecognition({ navigate, cardId }: Props) {
             <Badge variant="muted">Original scan</Badge>
           </div>
           <div className="p-6">
-            {card.imageUrl ? <img src={card.imageUrl} alt="수정되지 않는 명함 원본 이미지" className="w-full max-h-96 object-contain rounded-lg" /> : <>
+            {card.imageUrl ? <OriginalImage card={card} /> : <>
             {/* Card mockup */}
             <div className="rounded-xl overflow-hidden shadow-lg" style={{ background: 'white', border: '1px solid #E2E8F0', aspectRatio: '1.75', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '20px 24px' }}>
               <div>
@@ -149,8 +150,7 @@ export default function AIRecognition({ navigate, cardId }: Props) {
               예시 명함 미리보기
             </p>
             </>}
-            {card.ocrRawText && <div className="mt-5"><h3 className="text-sm font-semibold mb-2">OCR 원문 · {card.language} · {card.model || card.engine}</h3><pre className="text-xs whitespace-pre-wrap break-words bg-slate-50 p-3 rounded-lg max-h-64 overflow-auto">{card.ocrRawText}</pre></div>}
-            {card.structured && <details className="mt-4 text-xs"><summary className="cursor-pointer text-blue-600">최초 구조화 JSON 보기</summary><pre className="whitespace-pre-wrap break-words bg-slate-50 p-3 mt-2 max-h-72 overflow-auto">{JSON.stringify(card.structured, null, 2)}</pre></details>}
+            <div className="mt-5"><OcrResults card={card} /></div>
           </div>
 
           {/* AI analysis summary */}
