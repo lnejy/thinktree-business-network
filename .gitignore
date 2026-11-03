@@ -15,12 +15,7 @@
 **/.DS_Store
 /backend/runtime/
 
-# Private business-card evaluation inputs and generated reports stay local
-/backend/cards/*
-!/backend/cards/.gitkeep
+# Ground-truth labels remain local; supplied originals and OCR reports are tracked
 /backend/gt/*
 !/backend/gt/.gitkeep
 /backend/gt_fields/
-/backend/out/*
-!/backend/out/.gitkeep
-/backend/OCR_테스트_결과.html

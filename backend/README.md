@@ -1,5 +1,7 @@
 # 명함 OCR 테스트 (PaddleOCR)
 
+제공된 명함 20개의 원본과 기존 인식 결과는 [명함별 원본 및 OCR 결과 목록](EVALUATION_RESULTS.md)에서 확인할 수 있습니다. 전체 시각화 및 정답 비교는 [HTML 보고서](OCR_테스트_결과.html)를 내려받아 브라우저로 열어주세요.
+
 명함 이미지를 [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)로 인식하고, 정답지(GT)와 비교해 정확도를 측정한 뒤 HTML 리포트로 정리하는 테스트 도구입니다.
 
 - 한국어 모델(`korean`)과 기본 모델(`default`)을 모두 돌려 평균 신뢰도가 높은 쪽을 자동 채택
