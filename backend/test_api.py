@@ -96,6 +96,23 @@ class CardApiTests(unittest.TestCase):
         self.assertEqual(result['email']['value'], 'hello@example.com')
         self.assertEqual(result['mobile']['value'], '010-1234-5678')
 
+    def test_review_dates_and_explicit_link_split(self):
+        cards = [self.sample() for _ in range(3)]
+        def review(card, **options):
+            card['extracted']['company']['value'] = 'Example'
+            card['extracted']['name']['value'] = 'Example Person'
+            return self.client.put(f'/api/cards/{card["id"]}/review', json=dict(extracted=card['extracted'], action='confirm', **options))
+        first, second, third = cards
+        self.assertEqual(review(first, effectiveDate='2024-01-01').status_code, 200)
+        self.assertEqual(review(second, personLink=first['id']).status_code, 200)
+        self.assertEqual(review(third, personLink=first['id']).status_code, 200)
+        self.assertEqual(review(first, personLink=third['id']).status_code, 422)
+        self.assertEqual(review(first, personLink='separate').status_code, 200)
+        self.assertEqual(self.store.get(first['id'])['effectiveDate'], '2024-01-01')
+        remaining = [self.store.get(card['id']) for card in (second, third)]
+        self.assertEqual(sum(card.get('personLink') is None for card in remaining), 1)
+        self.assertTrue(any(card.get('personLink') in (second['id'], third['id']) for card in remaining))
+
     def test_external_failure_preserves_ocr(self):
         card = self.store.create('e1', 'gemini', 'auto')
         with patch.object(self.pipeline, 'recognize', return_value=dict(lines=['Name: Test', 'Company: Example'], avg_score=0.95, language='en')), \

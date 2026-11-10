@@ -2,6 +2,7 @@ import io
 import json
 import re
 from contextlib import asynccontextmanager
+from datetime import date
 from typing import Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -110,11 +111,12 @@ def normalize_image(content):
                 raise ValueError('JPG, PNG, WEBP, BMP 이미지를 사용하세요.')
             if image.width * image.height > Image.MAX_IMAGE_PIXELS:
                 raise ValueError('이미지는 2,500만 화소 이하로 등록하세요.')
+            extension = {'JPEG': '.jpg', 'PNG': '.png', 'WEBP': '.webp', 'BMP': '.bmp'}[image.format]
             image = ImageOps.exif_transpose(image).convert('RGB')
             if min(image.size) < 40:
                 raise ValueError('이미지가 너무 작습니다.')
             image.thumbnail((2400, 2400))
-            return image.copy()
+            return image.copy(), extension
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
         raise HTTPException(400, str(exc) if isinstance(exc, ValueError) else '읽을 수 없는 이미지입니다.')
 
@@ -129,10 +131,15 @@ async def upload(file: UploadFile = File(...), ownerId: str = Form('e1'),
     await file.close()
     if len(content) > MAX_BYTES:
         raise HTTPException(413, '파일은 15MB 이하로 등록하세요.')
-    image = normalize_image(content)
+    image, extension = normalize_image(content)
     card = store.create(ownerId, engine, language)
     try:
         image.save(store.images / f'{card["id"]}.png')
+        store.originals.mkdir(exist_ok=True)
+        (store.originals / f'{card["id"]}{extension}').write_bytes(content)
+        card = store.update(card['id'], originalExtension=extension,
+                            originalUrl=f'/api/cards/{card["id"]}/original',
+                            sourceFileName=(file.filename or '명함').replace('\\', '/').split('/')[-1][:255])
     except OSError:
         store.update(card['id'], status='failed', error='이미지 저장에 실패했습니다.')
         raise HTTPException(500, '이미지 저장에 실패했습니다.')
@@ -161,6 +168,9 @@ class Review(BaseModel):
     model_config = ConfigDict(extra='forbid')
     extracted: dict[str, FieldValue]
     action: Literal['draft', 'confirm'] = 'draft'
+    effectiveDate: date | None = None
+    personLink: str | None = Field(default=None, max_length=100)
+    companyLink: str | None = Field(default=None, max_length=100)
 
 
 @app.put('/api/cards/{card_id}/review')
@@ -183,8 +193,40 @@ def review(card_id: str, body: Review):
                 if value and not 7 <= len(re.sub(r'\D', '', value)) <= 15:
                     raise HTTPException(422, '전화번호 형식을 확인하세요.')
         status = 'reviewed' if body.action == 'confirm' or card['status'] == 'reviewed' else 'ready_for_review'
-        return store.update(card_id, extracted=extracted, status=status,
-                            reviewedAt=now() if status == 'reviewed' else None)
+        changes = {}
+        if 'effectiveDate' in body.model_fields_set:
+            if body.effectiveDate and body.effectiveDate > date.today():
+                raise HTTPException(422, '기준일은 오늘 이전 또는 오늘로 지정하세요.')
+            changes['effectiveDate'] = body.effectiveDate.isoformat() if body.effectiveDate else None
+        for key in ('personLink', 'companyLink'):
+            if key not in body.model_fields_set:
+                continue
+            link = getattr(body, key)
+            seen = {card_id}
+            target = link
+            while target and target != 'separate':
+                if target in seen:
+                    raise HTTPException(422, '서로를 참조하는 연결은 저장할 수 없습니다.')
+                seen.add(target)
+                reference = get_card(target)
+                if reference['status'] != 'reviewed':
+                    raise HTTPException(422, '확정된 명함만 연결할 수 있습니다.')
+                target = reference.get(key)
+            changes[key] = link
+        dependents = {}
+        for key in ('personLink', 'companyLink'):
+            if changes.get(key) != 'separate' or card.get(key) == 'separate':
+                continue
+            linked = sorted((item for item in store.all() if item.get(key) == card_id), key=lambda item: (item['uploadedAt'], item['id']))
+            # Keep the remaining explicit links together when their reference card is split off.
+            anchor = card.get(key) or (linked[0]['id'] if linked else None)
+            for item in linked:
+                updated = dependents.setdefault(item['id'], item)
+                updated[key] = None if item['id'] == anchor else anchor
+        card.update(extracted=extracted, status=status,
+                    reviewedAt=now() if status == 'reviewed' else None, **changes)
+        store.put_many([card, *dependents.values()])
+        return card
 
 
 @app.delete('/api/cards/{card_id}', status_code=204)

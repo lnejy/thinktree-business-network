@@ -49,6 +49,42 @@ try {
   api.hydrateCards([a]);
   tree = api.companyTree(a.companyId);
   assert.equal(tree.children[0].children[0].children[0].name, '지역본부');
+  const old = card('7', '개발팀', 'A 연구소', 'a.test');
+  const recent = card('8', '연구팀', 'B 연구소', 'b.test');
+  const peer = card('9', '개발팀', 'A 연구소', 'a.test');
+  const namesake = card('10', '개발팀', 'A 연구소', 'a.test');
+  old.extracted.name.value = recent.extracted.name.value = namesake.extracted.name.value = '김가람';
+  old.extracted.mobile.value = '010-1234-5678';
+  recent.extracted.mobile.value = '+82 10 1234 5678';
+  old.effectiveDate = '2024-01-01';
+  recent.effectiveDate = '2026-01-01';
+  peer.effectiveDate = '2025-01-01';
+  namesake.effectiveDate = '2025-01-01';
+  api.hydrateCards([recent, old, peer, namesake]);
+  assert.equal(recent.contactId, old.contactId, 'mobile and name survive a transfer');
+  assert.notEqual(old.contactId, namesake.contactId, 'namesakes need additional evidence');
+  assert.equal(api.personHistory(old.contactId)[0].id, recent.id);
+  assert.equal(api.currentAffiliations('2025-12-31').find(item => item.contactId === old.contactId).id, old.id);
+  assert.equal(api.currentAffiliations('2026-01-01').find(item => item.contactId === old.contactId).id, recent.id);
+  assert.ok(api.sharedAffiliations(old.contactId).some(item => item.card.id === peer.id && item.date === '2025-01-01'));
+  assert.ok(api.affiliationChanges(recent, old).some(change => change.label === '회사명'));
+  const alias = card('11', '개발팀', 'A 연구소 주식회사', 'a.test');
+  const sharedMailbox = structuredClone(old);
+  sharedMailbox.extracted.mobile.value = '';
+  sharedMailbox.extracted.email.value = 'sales@a.test';
+  const sharedMailboxPeer = structuredClone(sharedMailbox);
+  const truthPairs = [
+    [old, recent, 'person', true], [old, namesake, 'person', false],
+    [sharedMailbox, sharedMailboxPeer, 'person', false], [old, alias, 'company', true],
+    [a, b, 'company', true], [a, c, 'company', false], [a, d, 'company', false],
+    [e, f, 'company', false], [old, peer, 'company', true], [old, recent, 'company', false],
+  ];
+  const matches = truthPairs.filter(([left, right, kind, expected]) => api.matchEvidence(left, right, kind).strong === expected).length;
+  assert.equal(matches, truthPairs.length, 'automatic linking must match labeled scenarios');
+  console.log(`Labeled identity scenarios: ${matches}/${truthPairs.length} automatic-link decisions correct`);
+  old.personLink = 'separate';
+  api.hydrateCards([recent, old, peer, namesake]);
+  assert.notEqual(recent.contactId, old.contactId, 'separated reference does not attract automatic links');
   api.hydrateCards([]);
   assert.equal(data.companies.length, originalCount);
   console.log('PASS: identity evidence, domain conflicts, free mail isolation, parent-scoped teams, full department paths, contacts, network, idempotent refresh');

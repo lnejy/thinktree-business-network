@@ -3,6 +3,8 @@ import { PageName, Badge, Btn } from '../Layout';
 import { IconX, IconUser, IconBuilding, IconCard, IconPhone, IconMail, IconFilter } from '../icons';
 import { employees, contacts, companies, networkConnections, confirmedCards } from '../data';
 import type { Employee, Contact } from '../data';
+import { affiliationChanges, cardDate, personHistory } from '../cardApi';
+import { AffiliationHistory } from '../components/AffiliationHistory';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -16,6 +18,12 @@ export default function BusinessNetwork({ navigate }: Props) {
   const filteredContacts = filterCompany === 'all'
     ? contacts
     : contacts.filter(c => c.companyId === filterCompany);
+  const changes = filteredContacts.flatMap(contact => {
+    const [latest, earlier] = personHistory(contact.id);
+    if (!latest || !earlier) return [];
+    const changed = affiliationChanges(latest, earlier).filter(change => ['회사명', '부서', '팀', '직책', '본사·지점'].includes(change.label));
+    return changed.length ? [{ card: latest, changed }] : [];
+  }).sort((a, b) => cardDate(b.card).localeCompare(cardDate(a.card))).slice(0, 10);
 
   const activeConnectionsForEmp = (empId: string) =>
     networkConnections.filter(n => n.employeeId === empId && filteredContacts.some(c => c.id === n.contactId));
@@ -62,6 +70,7 @@ export default function BusinessNetwork({ navigate }: Props) {
           </div>
         </div>
 
+        {changes.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-4"><h2 className="font-semibold text-sm">최근 소속·직책 변경</h2><ul className="mt-2 space-y-2 text-xs">{changes.map(({ card, changed }) => <li key={card.id}><button onClick={() => navigate('card-detail', { cardId: card.id })} className="text-blue-700">{cardDate(card)} · {card.extracted.name.value}</button> · {changed.map(change => `${change.label} ${change.from || '미입력'} → ${change.to || '미입력'}`).join(' · ')}</li>)}</ul></section>}
         {/* Network legend */}
         <div className="flex items-center gap-4 px-4 py-2.5 rounded-lg text-xs" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
           <span style={{ color: '#64748B' }}>Legend:</span>
@@ -279,6 +288,7 @@ export default function BusinessNetwork({ navigate }: Props) {
 
             {selectedContact && (
               <>
+                <AffiliationHistory personId={selectedContact.id} navigate={navigate} />
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold shrink-0" style={{ background: '#F5F3FF', color: '#7C3AED' }}>
                     {selectedContact.name.slice(0, 1)}

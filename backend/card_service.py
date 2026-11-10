@@ -5,6 +5,7 @@ import os
 import re
 import sqlite3
 import threading
+import tempfile
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -60,10 +61,13 @@ class Store:
         return json.loads(row[0])
 
     def put(self, card):
-        with self.connect() as db:
-            db.execute('INSERT INTO cards VALUES (?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',
-                       (card['id'], json.dumps(card, ensure_ascii=False)))
+        self.put_many([card])
         return card
+
+    def put_many(self, cards):
+        with self.connect() as db:
+            db.executemany('INSERT INTO cards VALUES (?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',
+                           [(card['id'], json.dumps(card, ensure_ascii=False)) for card in cards])
 
     def update(self, card_id, **changes):
         with self.lock:
@@ -79,7 +83,7 @@ class Store:
                              requestedLanguage=language, source=source, warnings=[], ocrRawText=''))
 
 
-def map_structured(fields, confidence=0):
+def map_structured(fields, evidence=None):
     company, site, person = (fields.get(k) or {} for k in ('company', 'site', 'person'))
     departments = fields.get('departments') or []
     address = site.get('address') or ''
@@ -93,8 +97,25 @@ def map_structured(fields, confidence=0):
                   fax=site.get('fax'), postalCode=postal.group() if postal else '',
                   address2=next((a for a in extra_addresses if a and a != address), ''))
     # An aggregate OCR score cannot substantiate per-field certainty.
-    return {k: dict(value=str(values.get(k) or ''), confidence='medium' if values.get(k) else 'low')
-            for k in FIELD_KEYS}
+    def confidence(key, value):
+        if not value:
+            return 'low'
+        if evidence and key in ('email', 'mobile', 'phone', 'website', 'fax'):
+            def matches_value(text):
+                if key in ('mobile', 'phone', 'fax'):
+                    number = re.sub(r'\D', '', str(value))
+                    return len(number) >= 7 and number == re.sub(r'\D', '', text)
+                pattern = r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}' if key == 'email' else r'(?:https?://|www\.)[^\s,]+'
+                return str(value).casefold().rstrip('.,;') in [token.casefold().rstrip('.,;') for token in re.findall(pattern, text)]
+
+            matches = [score for text, score in zip(evidence.get('texts', []), evidence.get('scores', [])) if matches_value(text)]
+            if key == 'email' and len(set((fields.get('extra') or {}).get('emails') or [])) > 1:
+                return 'medium'
+            if matches and max(matches) >= 0.95:
+                return 'high'
+        return 'medium'
+
+    return {k: dict(value=str(values.get(k) or ''), confidence=confidence(k, values.get(k))) for k in FIELD_KEYS}
 
 
 def local_fields(lines):
@@ -108,10 +129,13 @@ def local_fields(lines):
     site = dict(name=None, site_type=None, address=None, tel=None, fax=None)
     company = dict(name=None, brand_name=None, aliases=[], registration_no=None,
                    homepage_url=urls[0] if urls else None)
-    labels = [(r'^(?:성명|이름|Name)\s*[:：]\s*(.+)$', person, 'name'),
-              (r'^(?:회사명|Company)\s*[:：]\s*(.+)$', company, 'name'),
-              (r'^(?:주소|Address)\s*[:：]\s*(.+)$', site, 'address'),
-              (r'^(?:직책|직급|Title)\s*[:：]\s*(.+)$', person, 'title')]
+    organization = {}
+    labels = [(r'^(?:성명|이름|氏名|Name)\s*[:：]\s*(.+)$', person, 'name'),
+              (r'^(?:회사명|会社名|Company)\s*[:：]\s*(.+)$', company, 'name'),
+              (r'^(?:주소|住所|Address)\s*[:：]\s*(.+)$', site, 'address'),
+              (r'^(?:부서|部署|Department)\s*[:：]\s*(.+)$', organization, 'department'),
+              (r'^(?:지점|사업소|支店|Branch)\s*[:：]\s*(.+)$', site, 'name'),
+              (r'^(?:직책|직급|役職|Title)\s*[:：]\s*(.+)$', person, 'title')]
     for line in lines:
         for pattern, target, key in labels:
             match = re.match(pattern, line.strip(), re.I)
@@ -126,8 +150,43 @@ def local_fields(lines):
                 person['mobile'] = phone
             elif not person['tel']:
                 person['tel'] = phone
-    return dict(company=company, site=site, person=person, departments=[], has_handwritten_note=False,
+    if not company['name']:
+        candidates = [line.strip() for line in lines if re.fullmatch(
+            r'(?:㈜|\(주\)|주식회사|株式会社)\s*[^\d@]+|[^\d@]+\s+(?:Co\.,?\s*Ltd\.?|Inc\.?|LLC)', line.strip(), re.I)]
+        if len(candidates) == 1:
+            company['name'] = candidates[0]
+    return dict(company=company, site=site, person=person, departments=list(organization.values()), has_handwritten_note=False,
                 extra=dict(phones=phones, emails=emails, addresses=[], unmapped=lines))
+
+
+def prepare_ocr(image):
+    from PIL import Image, ImageOps
+    import numpy as np
+
+    grayscale = ImageOps.autocontrast(ImageOps.grayscale(image), cutoff=1)
+    preview = grayscale.copy()
+    preview.thumbnail((420, 420))
+    ink = np.asarray(preview) < 128
+    if not 0.01 <= ink.mean() <= 0.35:
+        return grayscale.convert('RGB')
+    mask = Image.fromarray(ink.astype('uint8') * 255)
+
+    def score(angle):
+        rotated = mask.rotate(angle, expand=True, fillcolor=0)
+        rows = (np.asarray(rotated) > 0).sum(axis=1, dtype=float)
+        return np.square(rows).sum() / max(rows.sum() ** 2, 1)
+
+    angle = max(range(-12, 13, 3), key=score)
+    if angle:
+        angle = max(range(max(-12, angle - 2), min(12, angle + 2) + 1), key=score)
+        if score(angle) > score(0) * 1.12:
+            grayscale = grayscale.rotate(angle, expand=True, fillcolor=255, resample=Image.Resampling.BICUBIC)
+            ink_bounds = grayscale.point(lambda value: 255 if value < 128 else 0).getbbox()
+            if ink_bounds:
+                left, top, right, bottom = ink_bounds
+                grayscale = grayscale.crop((max(0, left - 40), max(0, top - 40),
+                                            min(grayscale.width, right + 40), min(grayscale.height, bottom + 40)))
+    return grayscale.convert('RGB')
 
 
 class Pipeline:
@@ -142,11 +201,20 @@ class Pipeline:
     def recognize(self, path, language):
         import ocr_test
         langs = ['korean', 'default'] if language == 'auto' else [dict(ko='korean', ja='japan', en='en')[language]]
+        from PIL import Image
+
         results = {}
-        for lang in langs:
-            if lang not in self.engines:
-                self.engines[lang] = ocr_test.PaddleOCR(**ocr_test.COMMON, **({} if lang == 'default' else {'lang': lang}))
-            results[lang] = ocr_test.run_model(self.engines[lang], path)
+        with tempfile.TemporaryDirectory(dir=self.store.directory) as temporary:
+            corrected = Path(temporary) / 'corrected.png'
+            with Image.open(path) as image:
+                prepare_ocr(image).save(corrected)
+            for lang in langs:
+                if lang not in self.engines:
+                    options = {**ocr_test.COMMON, 'use_textline_orientation': True}
+                    if lang != 'default':
+                        options['lang'] = lang
+                    self.engines[lang] = ocr_test.PaddleOCR(**options)
+                results[lang] = ocr_test.run_model(self.engines[lang], corrected)
         chosen = max(results, key=lambda k: results[k]['avg_score'])
         best = results[chosen]
         return dict(lines=best['lines'], avg_score=best['avg_score'], chosen_model=chosen,
@@ -179,7 +247,7 @@ class Pipeline:
                 except Exception:
                     log.exception('External structuring failed for %s', card_id)
                     warnings.append('외부 AI 구조화에 실패했습니다. OCR 원문과 로컬 추출 결과를 검토하세요. 서버의 키·모델·이용 한도를 확인하세요.')
-            self.store.update(card_id, status='ready_for_review', extracted=map_structured(fields),
+            self.store.update(card_id, status='ready_for_review', extracted=map_structured(fields, ocr),
                               structured=fields, model=model, warnings=warnings, error=None,
                               departmentPath=fields.get('departments') or [])
         except Exception as exc:

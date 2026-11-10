@@ -3,8 +3,9 @@ import { PageName, AIBadge, ConfidenceBadge, Btn, Badge } from '../Layout';
 import { IconSparkle, IconCheck, IconX, IconAlertTriangle, IconEdit } from '../icons';
 import { incomingCards, confirmedCards, employees } from '../data';
 import type { BusinessCard, ConfidenceLevel } from '../data';
-import { saveReview, request, refreshCards, isLiveCard, type LiveCard } from '../cardApi';
+import { saveReview, request, refreshCards, isLiveCard, needsLinkChoice, type LiveCard, type ReviewOptions } from '../cardApi';
 import { OriginalImage, OcrResults } from '../components/CardEvidence';
+import { LinkReview } from '../components/LinkReview';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -42,6 +43,7 @@ export default function AIRecognition({ navigate, cardId }: Props) {
   );
 
   const [saved, setSaved] = useState(false);
+  const [options, setOptions] = useState<ReviewOptions>({ effectiveDate: card.effectiveDate, personLink: card.personLink, companyLink: card.companyLink });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -50,9 +52,18 @@ export default function AIRecognition({ navigate, cardId }: Props) {
 
   const handleSave = async (action: 'confirm' | 'draft' = 'confirm') => {
     if (busy) return;
+    if (action === 'confirm' && (!fields.company.value.trim() || !fields.name.value.trim())) {
+      setError('확정하려면 회사명과 이름을 입력하세요.');
+      return;
+    }
+    const preview = { ...card, extracted: fields };
+    if (action === 'confirm' && (needsLinkChoice(preview, 'person', options) || needsLinkChoice(preview, 'company', options))) {
+      setError('인물 또는 회사의 연결 대상을 확인하세요.');
+      return;
+    }
     setBusy(true); setError('');
     try {
-      await saveReview(card, fields, action);
+      await saveReview(card, fields, action, options);
       if (action === 'confirm') { setSaved(true); navigate('card-detail', { cardId: card.id }); }
       else navigate('incoming-cards');
     } catch (e) { setError((e as Error).message); }
@@ -235,6 +246,7 @@ export default function AIRecognition({ navigate, cardId }: Props) {
             </div>
           </div>
 
+          {isLiveCard(card.id) && <div className="px-4 pb-4"><LinkReview card={{ ...card, extracted: fields }} options={options} onChange={setOptions} /></div>}
           {/* Action buttons */}
           <div className="px-4 py-4 border-t flex items-center gap-2 justify-between" style={{ borderColor: '#F1F5F9' }}>
             <Btn variant="danger" disabled={busy || card.status === 'reviewed'} onClick={handleReject}>

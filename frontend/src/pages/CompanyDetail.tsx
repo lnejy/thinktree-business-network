@@ -1,4 +1,4 @@
-import { companyTree } from '../cardApi';
+import { companyTree, currentAffiliations } from '../cardApi';
 import React, { useState } from 'react';
 import { PageName, Badge, Btn } from '../Layout';
 import { IconBuilding, IconUser, IconCard, IconArrowRight, IconMapPin, IconGlobe, IconPhone, IconMail, IconX } from '../icons';
@@ -13,6 +13,7 @@ interface Props {
 export default function CompanyDetail({ navigate, companyId }: Props) {
   const [tab, setTab] = useState<'overview' | 'org' | 'contacts' | 'network'>('overview');
   const [selectedNode, setSelectedNode] = useState<OrgNode | null>(null);
+  const [asOf, setAsOf] = useState('');
 
   const company = companies.find(c => c.id === companyId) || companies[0];
   const companyContacts = contacts.filter(c => c.companyId === company.id);
@@ -137,13 +138,14 @@ export default function CompanyDetail({ navigate, companyId }: Props) {
                 <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Click any node to view details · Auto-built from business cards</p>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="ai">AI-generated</Badge>
-                <Badge variant="muted">{company.contactCount} people mapped</Badge>
+                <label className="text-xs">조회 기준일 <input type="date" value={asOf} onChange={event => { setAsOf(event.target.value); setSelectedNode(null); }} className="border rounded px-2 py-1" /></label>
+                <Badge variant="muted">{currentAffiliations(asOf || undefined).filter(card => card.companyId === company.id).length}명</Badge>
               </div>
             </div>
             <div className="p-8 overflow-x-auto">
               <div className="min-w-max">
-                <OrgTree node={companyTree(company.id)} onSelect={setSelectedNode} selectedId={selectedNode?.id} />
+                {asOf && <p className="text-xs text-slate-600 mb-3">{asOf}까지의 가장 최근 명함 기록을 기준으로 표시합니다.</p>}
+                <OrgTree node={companyTree(company.id, asOf || undefined)} onSelect={setSelectedNode} selectedId={selectedNode?.id} />
               </div>
             </div>
           </div>
@@ -215,7 +217,7 @@ export default function CompanyDetail({ navigate, companyId }: Props) {
 
       {/* Detail panel */}
       {selectedNode && tab === 'org' && (
-        <NodeDetailPanel node={selectedNode} onClose={() => setSelectedNode(null)} navigate={navigate} />
+        <NodeDetailPanel node={selectedNode} asOf={asOf || undefined} onClose={() => setSelectedNode(null)} navigate={navigate} />
       )}
     </div>
   );
@@ -297,8 +299,11 @@ function OrgTree({ node, onSelect, selectedId, depth = 0 }: { node: OrgNode; onS
   );
 }
 
-function NodeDetailPanel({ node, onClose, navigate }: { node: OrgNode; onClose: () => void; navigate: (page: PageName, params?: Record<string, string>) => void }) {
-  const contact = node.contactId ? contacts.find(c => c.id === node.contactId) : null;
+function NodeDetailPanel({ node, asOf, onClose, navigate }: { node: OrgNode; asOf?: string; onClose: () => void; navigate: (page: PageName, params?: Record<string, string>) => void }) {
+  const current = contacts.find(c => c.id === node.contactId);
+  const snapshot = currentAffiliations(asOf).find(c => c.contactId === node.contactId);
+  const x = snapshot?.extracted;
+  const contact = current && x ? { ...current, name: x.name.value, nameEn: x.nameEn.value, department: x.department.value, position: x.position.value, phone: x.phone.value, email: x.email.value } : current;
   const cardOwners = contact ? employees.filter(e => contact.ownerIds.includes(e.id)) : [];
 
   return (

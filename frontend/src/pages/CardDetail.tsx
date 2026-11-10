@@ -4,6 +4,7 @@ import { IconPhone, IconMail, IconMapPin, IconGlobe, IconBuilding, IconUser, Ico
 import { confirmedCards, incomingCards, employees, companies, contacts } from '../data';
 import type { LiveCard } from '../cardApi';
 import { OriginalImage, OcrResults } from '../components/CardEvidence';
+import { AffiliationHistory } from '../components/AffiliationHistory';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -104,6 +105,7 @@ export default function CardDetail({ navigate, cardId }: Props) {
 
         {/* Right: Contact info */}
         <div className="lg:col-span-3 space-y-4">
+          <AffiliationHistory personId={card.contactId} navigate={navigate} />
           {!!card.ocrRawText && <div className="bg-white border border-slate-200 rounded-xl p-5"><h2 className="font-semibold mb-4">OCR 인식·테스트 결과</h2><OcrResults card={card} /></div>}
           <div className="bg-white rounded-xl border" style={{ borderColor: '#E2E8F0' }}>
             <div className="px-5 py-4 border-b" style={{ borderColor: '#F1F5F9' }}>
