@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import date
@@ -12,16 +13,28 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from card_service import BASE, FIELD_KEYS, Pipeline, Store, map_structured, now
 from evaluation_import import import_evaluation
+from relational import RelationalStore
+from relational.router import make_router
 
 MAX_BYTES = 15 * 1024 * 1024
 Image.MAX_IMAGE_PIXELS = 25_000_000
 store = Store()
 pipeline = Pipeline(store)
+relational = RelationalStore(store.directory / 'relational.sqlite3')   # 확정 명함에서 다시 만들어지는 조회용 관계형 DB
+log = logging.getLogger(__name__)
+
+
+def sync_relational():
+    try:
+        relational.rebuild(store.all())
+    except Exception:       # 조회용 사본이므로 실패해도 명함 저장은 막지 않는다
+        log.exception('Relational rebuild failed')
 
 
 @asynccontextmanager
 async def lifespan(app):
     import_evaluation(store)
+    sync_relational()
     for card in store.all():
         if card['status'] in ('uploading', 'ocr_processing', 'ai_structuring'):
             store.update(card['id'], status='failed', error='서버가 재시작되어 처리가 중단됐습니다. 재시도하세요.')
@@ -30,6 +43,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title='ThinkTree local OCR API', lifespan=lifespan)
+app.include_router(make_router(relational))
 
 
 def get_card(card_id):
@@ -226,6 +240,7 @@ def review(card_id: str, body: Review):
         card.update(extracted=extracted, status=status,
                     reviewedAt=now() if status == 'reviewed' else None, **changes)
         store.put_many([card, *dependents.values()])
+        sync_relational()
         return card
 
 
