@@ -1,5 +1,5 @@
 import type { BusinessCard, OrgNode } from './data';
-import { incomingCards, confirmedCards, companies, contacts, networkConnections } from './data';
+import { cardOwners, incomingCards, confirmedCards, companies, contacts, networkConnections } from './data';
 
 export interface LiveCard extends BusinessCard {
   source?: string; engine?: string; model?: string; language?: string;
@@ -12,6 +12,7 @@ export interface LiveCard extends BusinessCard {
 }
 const originals = structuredClone({ incomingCards, confirmedCards, companies, contacts, networkConnections });
 let current: LiveCard[] = [];
+let sessionGeneration = 0;
 let revision = 0;
 const listeners = new Set<() => void>();
 export const subscribeCards = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
@@ -187,13 +188,17 @@ function assignLinks(cards: LiveCard[], kind: LinkKind) {
   }
   for (const card of cards) assign(card, new Set());
 }
+export class RequestError extends Error {
+  constructor(readonly status: number, message: string) { super(message); }
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try { response = await fetch(path, init); }
-  catch { throw new Error('명함을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.'); }
+  catch { throw new Error('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.'); }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(typeof body.detail === 'string' ? body.detail : `요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.`);
+    throw new RequestError(response.status, typeof body.detail === 'string' ? body.detail : '입력 내용을 확인하고 다시 시도해 주세요.');
   }
   return response.status === 204 ? undefined as T : response.json();
 }
@@ -223,7 +228,7 @@ export function hydrateCards(cards: LiveCard[]) {
   for (const [id, history] of byPerson) {
     const latest = history.sort(newestFirst)[0];
     const x = latest.extracted;
-    const ownerIds = [...new Set(history.map(card => card.ownerId))];
+    const ownerIds = [...new Set(history.flatMap(cardOwners))];
     contacts.push({
       id, companyId: latest.companyId!, name: x.name.value, nameEn: x.nameEn.value,
       department: x.department.value, team: x.team.value, position: x.position.value,
@@ -245,8 +250,15 @@ export function hydrateCards(cards: LiveCard[]) {
   }
   revision++; listeners.forEach(fn => fn());
 }
-export async function refreshCards() {
-  const cards = await request<LiveCard[]>('/api/cards'); hydrateCards(cards); return cards;
+export function resetCards() {
+  sessionGeneration++;
+  hydrateCards([]);
+}
+export async function refreshCards(signal?: AbortSignal) {
+  const generation = sessionGeneration;
+  const cards = await request<LiveCard[]>('/api/cards', { signal });
+  if (generation === sessionGeneration && !signal?.aborted) hydrateCards(cards);
+  return cards;
 }
 export type ReviewOptions = Pick<LiveCard, 'effectiveDate' | 'personLink' | 'companyLink'>;
 export async function saveReview(card: BusinessCard, extracted: BusinessCard['extracted'], action: 'draft' | 'confirm', options?: ReviewOptions) {

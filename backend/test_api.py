@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import api
+from accounts import Accounts, distribute_legacy_cards
 from card_service import Pipeline, Store, local_fields, map_structured
 from evaluation_import import import_evaluation, ocr_fingerprint
 
@@ -26,6 +27,8 @@ class CardApiTests(unittest.TestCase):
             p.start()
         self.client = TestClient(api.app)
         self.client.__enter__()
+        self.access = json.loads(Accounts(self.store).bootstrap_path.read_text(encoding='utf-8'))
+        self.login('beomchang')
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
@@ -33,8 +36,15 @@ class CardApiTests(unittest.TestCase):
             p.stop()
         self.temp.cleanup()
 
+    def login(self, username, client=None):
+        client = client or self.client
+        account = next(item for item in self.access['accounts'] if item['username'] == username)
+        response = client.post('/api/auth/login', json={'username': username, 'password': account['password']})
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
     def sample(self):
-        response = self.client.post('/api/samples/sample1?ownerId=e2')
+        response = self.client.post('/api/samples/sample1')
         self.assertEqual(response.status_code, 201)
         return response.json()
 
@@ -58,6 +68,49 @@ class CardApiTests(unittest.TestCase):
         self.assertEqual(self.client.put(url, json={'extracted': invalid, 'action': 'draft'}).status_code, 422)
         self.assertEqual(Store(self.temp.name).get(card['id'])['extracted']['company']['value'], '테스트 주식회사')
         self.assertEqual(self.client.delete(f'/api/cards/{card["id"]}').status_code, 409)
+
+    def test_signup_sessions_and_card_access(self):
+        other = TestClient(api.app)
+        self.assertEqual(other.get('/api/cards').status_code, 401)
+        self.assertEqual(other.post('/api/auth/login', json={'username': 'beomchang', 'password': 'invalid'}).status_code, 401)
+        signup = dict(username='test-member', name='테스트 팀원', password='safe-demo-password', inviteCode='invalid')
+        self.assertEqual(other.post('/api/auth/signup', json=signup).status_code, 403)
+        signup['inviteCode'] = self.access['inviteCode']
+        response = other.post('/api/auth/signup', json=signup)
+        self.assertEqual(response.status_code, 201)
+        self.assertIn('HttpOnly', response.headers['set-cookie'])
+        recipient = response.json()['user']
+        self.assertEqual(other.get('/api/auth/me').json()['user'], recipient)
+        self.assertEqual(other.post('/api/evaluation/import').status_code, 403)
+        self.assertEqual(other.post('/api/auth/signup', json=signup).status_code, 409)
+        card = self.sample()
+        card_url = f'/api/cards/{card["id"]}'
+        self.assertEqual(other.get('/api/cards').json(), [])
+        self.assertEqual(other.get(card['imageUrl']).status_code, 403)
+        self.assertEqual(other.delete(card_url).status_code, 403)
+        card['extracted']['company']['value'] = 'Sample Company'
+        review = {'action': 'confirm', 'extracted': card['extracted']}
+        self.assertEqual(self.client.put(f'{card_url}/review', json=review).status_code, 200)
+        self.assertEqual(other.get(card_url).status_code, 200)
+        self.assertEqual(other.put(f'{card_url}/review', json=review).status_code, 403)
+        self.assertEqual(self.client.put(f'{card_url}/owners', json={'ownerIds': ['unknown']}).status_code, 422)
+        shared = self.client.put(f'{card_url}/owners', json={'ownerIds': [recipient['id'], recipient['id']]})
+        self.assertEqual(shared.json()['ownerIds'], ['e2', recipient['id']])
+        self.assertEqual(other.put(f'{card_url}/review', json=review).status_code, 200)
+        self.assertEqual(other.post('/api/auth/logout').status_code, 204)
+        self.assertEqual(other.get(card['imageUrl']).status_code, 401)
+
+    def test_existing_card_distribution_is_idempotent(self):
+        statuses = ['reviewed', *['ready_for_review'] * 10]
+        for index, status in enumerate(statuses):
+            self.store.put({'id': f'legacy-{index}', 'status': status, 'ownerId': 'e1', 'originalUrl': 'preserved'})
+        distribute_legacy_cards(self.store)
+        migrated = self.store.all()
+        self.assertEqual({card['ownerId'] for card in migrated}, {f'e{x}' for x in range(1, 6)})
+        self.assertEqual(self.store.get('legacy-0')['ownerIds'], [f'e{x}' for x in range(1, 6)])
+        self.assertTrue(all(card['originalUrl'] == 'preserved' for card in migrated))
+        distribute_legacy_cards(self.store)
+        self.assertEqual(self.store.all(), migrated)
 
     def test_invalid_images_and_options(self):
         self.assertEqual(self.client.post('/api/cards', files={'file': ('bad.png', b'not image', 'image/png')}).status_code, 400)
@@ -130,6 +183,7 @@ class CardApiTests(unittest.TestCase):
         self.assertTrue(any('외부 AI' in w for w in result['warnings']))
 
     def test_saved_evaluation_import_original_results_and_idempotence(self):
+        self.login('jaeyeon')
         source = Path(self.temp.name) / 'source'
         for folder in ('cards', 'out', 'out/images', 'gt'):
             (source / folder).mkdir(parents=True, exist_ok=True)

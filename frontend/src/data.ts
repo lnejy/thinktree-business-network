@@ -10,12 +10,14 @@ export interface Employee {
   department: string;
   email: string;
   avatarColor: string;
+  company: string;
 }
 
 export interface BusinessCard {
   id: string;
   imageUrl: string;
   ownerId: string;
+  ownerIds?: string[];
   companyId?: string;
   contactId?: string;
   status: CardStatus;
@@ -85,13 +87,8 @@ export interface OrgNode {
 }
 
 // ─── Our Company Employees ──────────────────────────────────────────
-export const employees: Employee[] = [
-  { id: 'e1', name: '김민수', nameEn: 'Kim Minsu', position: '영업팀장', department: '영업팀', email: 'minsu.kim@cardsync.io', avatarColor: '#2563EB' },
-  { id: 'e2', name: '이지영', nameEn: 'Lee Jiyoung', position: '사업개발 매니저', department: '사업개발팀', email: 'jiyoung.lee@cardsync.io', avatarColor: '#7C3AED' },
-  { id: 'e3', name: '박성호', nameEn: 'Park Sungho', position: '영업 대리', department: '영업팀', email: 'sungho.park@cardsync.io', avatarColor: '#059669' },
-  { id: 'e4', name: '최예린', nameEn: 'Choi Yerin', position: '마케팅 매니저', department: '마케팅팀', email: 'yerin.choi@cardsync.io', avatarColor: '#D97706' },
-  { id: 'e5', name: '정현우', nameEn: 'Jung Hyunwoo', position: '기술영업 과장', department: '기술영업팀', email: 'hyunwoo.jung@cardsync.io', avatarColor: '#0891B2' },
-];
+export const employees: Employee[] = [];
+export const cardOwners = (card: BusinessCard) => card.ownerIds?.length ? card.ownerIds : [card.ownerId];
 
 // ─── Client Companies ────────────────────────────────────────────────
 export const companies: Company[] = [
@@ -119,7 +116,7 @@ export const contacts: Contact[] = [
 // ─── Business Cards (confirmed) ─────────────────────────────────────
 export const confirmedCards: BusinessCard[] = [
   {
-    id: 'bc1', imageUrl: '', ownerId: 'e1', companyId: 'c1', contactId: 'ct1', status: 'reviewed',
+    id: 'bc1', imageUrl: '', ownerId: 'e1', ownerIds: ['e1', 'e3'], companyId: 'c1', contactId: 'ct1', status: 'reviewed',
     uploadedAt: '2025-09-20T09:15:00', reviewedAt: '2025-09-20T10:30:00', confidence: 96,
     extracted: {
       fax: { value: '', confidence: 'low' }, postalCode: { value: '', confidence: 'low' }, address2: { value: '', confidence: 'low' },
@@ -149,7 +146,7 @@ export const confirmedCards: BusinessCard[] = [
     }
   },
   {
-    id: 'bc4', imageUrl: '', ownerId: 'e2', companyId: 'c2', contactId: 'ct4', status: 'reviewed',
+    id: 'bc4', imageUrl: '', ownerId: 'e2', ownerIds: ['e2', 'e4'], companyId: 'c2', contactId: 'ct4', status: 'reviewed',
     uploadedAt: '2025-09-15T11:00:00', reviewedAt: '2025-09-15T11:45:00', confidence: 88,
     extracted: {
       fax: { value: '', confidence: 'low' }, postalCode: { value: '', confidence: 'low' }, address2: { value: '', confidence: 'low' },
@@ -164,7 +161,7 @@ export const confirmedCards: BusinessCard[] = [
     }
   },
   {
-    id: 'bc6', imageUrl: '', ownerId: 'e1', companyId: 'c3', contactId: 'ct6', status: 'reviewed',
+    id: 'bc6', imageUrl: '', ownerId: 'e1', ownerIds: ['e1', 'e5'], companyId: 'c3', contactId: 'ct6', status: 'reviewed',
     uploadedAt: '2025-09-10T16:30:00', reviewedAt: '2025-09-10T17:00:00', confidence: 93,
     extracted: {
       fax: { value: '', confidence: 'low' }, postalCode: { value: '', confidence: 'low' }, address2: { value: '', confidence: 'low' },

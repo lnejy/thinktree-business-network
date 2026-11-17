@@ -2,18 +2,21 @@ import React, { useState } from 'react';
 import { PageName, Badge, Btn } from '../Layout';
 import { IconX, IconUser, IconBuilding, IconCard, IconPhone, IconMail, IconFilter } from '../icons';
 import { employees, contacts, companies, networkConnections, confirmedCards } from '../data';
-import type { Employee, Contact } from '../data';
+import type { Contact } from '../data';
 import { affiliationChanges, cardDate, personHistory } from '../cardApi';
 import { AffiliationHistory } from '../components/AffiliationHistory';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
+  companyName: string;
 }
 
-export default function BusinessNetwork({ navigate }: Props) {
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+export default function BusinessNetwork({ navigate, companyName }: Props) {
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [filterCompany, setFilterCompany] = useState('all');
+  const selectedEmployee = employees.find(employee => employee.id === selectedEmployeeId);
+  const selectedContact = contacts.find(contact => contact.id === selectedContactId);
 
   const filteredContacts = filterCompany === 'all'
     ? contacts
@@ -49,8 +52,8 @@ export default function BusinessNetwork({ navigate }: Props) {
     employees.filter(e => contact.ownerIds.includes(e.id));
 
   return (
-    <div className="flex h-full">
-      <div className="flex-1 p-6 space-y-4 overflow-auto">
+    <div className="flex h-full flex-col lg:flex-row">
+      <div className="min-w-0 flex-1 p-4 space-y-4 overflow-auto sm:p-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold" style={{ color: '#0F172A', letterSpacing: '-0.02em' }}>Business Network</h1>
@@ -94,15 +97,15 @@ export default function BusinessNetwork({ navigate }: Props) {
         </div>
 
         {/* Bipartite network graph */}
-        <div className="bg-white rounded-xl border overflow-hidden" style={{ borderColor: '#E2E8F0' }}>
-          <div className="flex" style={{ minHeight: '480px' }}>
+        <div className="bg-white rounded-xl border overflow-x-auto" style={{ borderColor: '#E2E8F0' }}>
+          <div className="flex min-w-[720px]" style={{ minHeight: '480px' }}>
             {/* Left: Employees */}
             <div className="w-64 border-r flex flex-col" style={{ borderColor: '#F1F5F9' }}>
               <div className="px-4 py-3 border-b" style={{ borderColor: '#F1F5F9', background: '#FAFAFA' }}>
-                <div className="text-xs font-semibold" style={{ color: '#374151' }}>Our Team</div>
-                <div className="text-xs" style={{ color: '#94A3B8' }}>{employees.length} employees</div>
+                <div className="text-xs font-semibold" style={{ color: '#374151' }}>{companyName} 팀</div>
+                <div className="text-xs" style={{ color: '#64748B' }}>팀원 {employees.length}명</div>
               </div>
-              <div className="flex-1 p-3 space-y-2 overflow-y-auto">
+              <div className="flex-1 p-3 space-y-2">
                 {employees.map(emp => {
                   const connCount = activeConnectionsForEmp(emp.id).length;
                   const isHighlighted = highlightEmp.some(e => e.id === emp.id);
@@ -113,8 +116,8 @@ export default function BusinessNetwork({ navigate }: Props) {
                     <button
                       key={emp.id}
                       onClick={() => {
-                        setSelectedContact(null);
-                        setSelectedEmployee(isSelected ? null : emp);
+                        setSelectedContactId(null);
+                        setSelectedEmployeeId(isSelected ? null : emp.id);
                       }}
                       className="network-node-employee flex items-center gap-2.5 w-full p-2.5 rounded-lg text-left border transition-all"
                       style={{
@@ -128,7 +131,7 @@ export default function BusinessNetwork({ navigate }: Props) {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-medium truncate" style={{ color: '#0F172A' }}>{emp.name}</div>
-                        <div className="text-xs truncate" style={{ color: '#94A3B8' }}>{emp.position}</div>
+                        {emp.position && <div className="text-xs truncate" style={{ color: '#94A3B8' }}>{emp.position}</div>}
                       </div>
                       <div className="text-xs font-bold shrink-0" style={{ color: isSelected ? '#2563EB' : '#94A3B8', fontFamily: 'DM Mono, monospace' }}>
                         {connCount}
@@ -201,8 +204,8 @@ export default function BusinessNetwork({ navigate }: Props) {
                     <button
                       key={contact.id}
                       onClick={() => {
-                        setSelectedEmployee(null);
-                        setSelectedContact(isSelected ? null : contact);
+                        setSelectedEmployeeId(null);
+                        setSelectedContactId(isSelected ? null : contact.id);
                       }}
                       className="network-node-contact flex items-center gap-2.5 w-full p-2.5 rounded-lg text-left border transition-all"
                       style={{
@@ -232,12 +235,12 @@ export default function BusinessNetwork({ navigate }: Props) {
 
       {/* Detail panel */}
       {detail && (
-        <div className="w-72 bg-white border-l shrink-0 overflow-y-auto" style={{ borderColor: '#E2E8F0' }}>
+        <div className="w-full bg-white border-l shrink-0 overflow-y-auto lg:w-72" style={{ borderColor: '#E2E8F0' }}>
           <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white" style={{ borderColor: '#F1F5F9' }}>
             <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>
               {selectedEmployee ? 'Employee' : 'Contact'} Detail
             </span>
-            <button onClick={() => { setSelectedEmployee(null); setSelectedContact(null); }} className="p-1 rounded hover:bg-gray-100">
+            <button aria-label="상세 정보 닫기" onClick={() => { setSelectedEmployeeId(null); setSelectedContactId(null); }} className="p-1 rounded hover:bg-gray-100">
               <IconX size={14} style={{ color: '#94A3B8' }} />
             </button>
           </div>
@@ -251,8 +254,7 @@ export default function BusinessNetwork({ navigate }: Props) {
                   </div>
                   <div>
                     <div className="font-semibold" style={{ color: '#0F172A' }}>{selectedEmployee.name}</div>
-                    <div className="text-xs" style={{ color: '#94A3B8' }}>{selectedEmployee.nameEn}</div>
-                    <div className="text-xs mt-0.5" style={{ color: '#64748B' }}>{selectedEmployee.position} · {selectedEmployee.department}</div>
+                    <div className="text-xs mt-0.5" style={{ color: '#64748B' }}>{selectedEmployee.company}</div>
                   </div>
                 </div>
 
@@ -268,7 +270,7 @@ export default function BusinessNetwork({ navigate }: Props) {
                         return (
                           <button
                             key={contact.id}
-                            onClick={() => { setSelectedEmployee(null); setSelectedContact(contact); }}
+                            onClick={() => { setSelectedEmployeeId(null); setSelectedContactId(contact.id); }}
                             className="w-full flex items-center gap-2 p-2 rounded-lg text-left hover:bg-gray-50 transition-colors"
                           >
                             <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: '#F5F3FF', color: '#7C3AED' }}>
@@ -314,7 +316,7 @@ export default function BusinessNetwork({ navigate }: Props) {
                     {getOwnersForContact(selectedContact).map(emp => (
                       <button
                         key={emp.id}
-                        onClick={() => { setSelectedContact(null); setSelectedEmployee(emp); }}
+                        onClick={() => { setSelectedContactId(null); setSelectedEmployeeId(emp.id); }}
                         className="w-full flex items-center gap-2 p-2 rounded-lg text-left hover:bg-gray-50 transition-colors"
                       >
                         <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0" style={{ background: emp.avatarColor }}>

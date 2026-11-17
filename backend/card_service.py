@@ -77,7 +77,7 @@ class Store:
 
     def create(self, owner, engine, language, source='upload'):
         card_id = str(uuid.uuid4())
-        return self.put(dict(id=card_id, ownerId=owner, status='ocr_processing',
+        return self.put(dict(id=card_id, ownerId=owner, ownerIds=[owner], status='ocr_processing',
                              imageUrl=f'/api/cards/{card_id}/image', uploadedAt=now(),
                              confidence=0, extracted=empty_fields(), engine=engine,
                              requestedLanguage=language, source=source, warnings=[], ocrRawText=''))

@@ -2,7 +2,7 @@ import { isLiveCard } from '../cardApi';
 import React, { useState } from 'react';
 import { PageName, StatCard, Badge, Btn } from '../Layout';
 import { IconCard, IconBuilding, IconUser, IconAlertTriangle, IconMerge, IconSparkle } from '../icons';
-import { companies, employees, contacts, confirmedCards, incomingCards, formatDate } from '../data';
+import { cardOwners, companies, employees, contacts, confirmedCards, incomingCards, formatDate } from '../data';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -54,7 +54,7 @@ export default function Admin({ navigate, isAdmin }: Props) {
           </div>
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
             {employees.map(emp => {
-              const cardCount = confirmedCards.filter(c => c.ownerId === emp.id).length;
+              const cardCount = confirmedCards.filter(c => cardOwners(c).includes(emp.id)).length;
               const maxCards = 5;
               return (
                 <div key={emp.id} className="flex items-center gap-3 px-4 py-3">

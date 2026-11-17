@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PageName, Badge, Btn } from '../Layout';
 import { IconSearch, IconFilter, IconPlus, IconGrid, IconList, IconCard } from '../icons';
-import { confirmedCards, employees, formatDate } from '../data';
+import { cardOwners, confirmedCards, employees, formatDate } from '../data';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -13,7 +13,7 @@ export default function MyCards({ navigate, userId }: Props) {
   const [search, setSearch] = useState('');
   const [filterCompany, setFilterCompany] = useState('all');
 
-  const myCards = confirmedCards.filter(c => c.ownerId === userId);
+  const myCards = confirmedCards.filter(c => cardOwners(c).includes(userId));
   const companies = [...new Set(myCards.map(c => c.extracted.company.value))];
 
   const filtered = myCards.filter(c => {
