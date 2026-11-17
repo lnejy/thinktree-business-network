@@ -305,7 +305,7 @@ class Pipeline:
                     env_model = os.getenv(f'THINKTREE_{card["engine"].upper()}_MODEL')
                     if env_model:
                         engine.model = env_model
-                    fields, model, _, _ = engine.extract(ocr_extract.encode_image(path), ocr_extract.ocr_prompt(ocr))
+                    fields, model, _, _ = ocr_extract.extract(engine, ocr_extract.encode_image(path), ocr_extract.ocr_prompt(ocr))
                     warnings = ocr_extract.check(fields)
                 except Exception:
                     log.exception('External structuring failed for %s', card_id)

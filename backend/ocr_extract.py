@@ -249,10 +249,43 @@ class ClaudeEngine:
 ENGINES = {engine.name: engine for engine in (GeminiEngine, ClaudeEngine)}
 
 
+MAIN_LINE_RE = re.compile(r"대표|代表|main", re.I)
+
+
+def digits(text):
+    return re.sub(r"\D", "", text or "")
+
+
+def is_main_line(number, ocr_text):
+    return any(number in digits(line) and MAIN_LINE_RE.search(line) for line in ocr_text.splitlines())
+
+
+def repair(fields, ocr_text):
+    person, site = fields.get("person") or {}, fields.get("site") or {}
+
+    number = digits(site.get("tel"))
+    if number and not is_main_line(number, ocr_text):
+        if not person.get("tel"):
+            person["tel"] = site["tel"]
+        if digits(person.get("tel")) == number:
+            site["tel"] = None
+
+    reading = person.get("name_reading") or ""
+    email = (person.get("email") or "").lower()
+    if reading and ("@" in reading or (email and reading.lower() == email.split("@")[0])):
+        person["name_reading"] = None
+    return fields
+
+
+def extract(engine, image, prompt):
+    fields, model, used_in, used_out = engine.extract(image, prompt)
+    return repair(fields, prompt), model, used_in, used_out
+
+
 def extract_with_retry(engine, image, prompt):
     for attempt in range(RATE_LIMIT_RETRIES + 1):
         try:
-            return engine.extract(image, prompt)
+            return extract(engine, image, prompt)
         except RateLimited as error:
             if attempt == RATE_LIMIT_RETRIES:
                 raise ExtractError(f"요청 한도 초과 또는 서버 과부하: {error}")
