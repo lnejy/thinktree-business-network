@@ -14,7 +14,7 @@ import Admin from './pages/Admin';
 import CardDetail from './pages/CardDetail';
 import MobileCapture from './pages/MobileCapture';
 import { incomingCards } from './data';
-import { refreshCards, subscribeCards, cardRevision } from './cardApi';
+import { isLiveCard, refreshCards, subscribeCards, cardRevision } from './cardApi';
 
 interface AppState {
   page: PageName;
@@ -77,7 +77,7 @@ export default function App() {
     return <Login onLogin={handleLogin} />;
   }
 
-  const pendingCount = incomingCards.filter(c => c.status === 'ready_for_review' || c.status === 'ai_structuring').length;
+  const pendingCount = incomingCards.filter(c => isLiveCard(c.id) && c.status === 'ready_for_review').length;
 
   const renderPage = () => {
     const { page, params } = state;
@@ -121,7 +121,6 @@ export default function App() {
       userName={state.userName}
       pendingCount={pendingCount}
     >
-      <div className="px-6 py-2 text-xs bg-slate-100 text-slate-500">로컬 개발 모드 · 기존 예시 데이터와 새로 등록한 명함이 함께 표시됩니다. 로그인은 시연용입니다.</div>
       {connectionError && <div role="alert" className="px-6 py-3 bg-amber-50 text-amber-800 text-sm">{connectionError}</div>}
       {renderPage()}
     </Layout>

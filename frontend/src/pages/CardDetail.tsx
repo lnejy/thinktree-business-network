@@ -1,9 +1,9 @@
 import React from 'react';
-import { PageName, Badge, AIBadge, Btn } from '../Layout';
-import { IconPhone, IconMail, IconMapPin, IconGlobe, IconBuilding, IconUser, IconEdit, IconDownload } from '../icons';
+import { PageName, Badge, Btn } from '../Layout';
+import { IconPhone, IconMail, IconMapPin, IconGlobe, IconBuilding, IconUser, IconEdit } from '../icons';
 import { confirmedCards, incomingCards, employees, companies, contacts } from '../data';
 import type { LiveCard } from '../cardApi';
-import { OriginalImage, OcrResults } from '../components/CardEvidence';
+import { OriginalImage } from '../components/CardEvidence';
 import { AffiliationHistory } from '../components/AffiliationHistory';
 
 interface Props {
@@ -26,11 +26,10 @@ export default function CardDetail({ navigate, cardId }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: '#0F172A', letterSpacing: '-0.02em' }}>Card Detail</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>{card.status === 'reviewed' ? '확정한 명함' : '명함 원본 및 OCR 결과 · 검토 후 확정하세요'}</p>
+          <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>{card.status === 'reviewed' ? '확정한 명함' : '사진과 명함 정보를 확인하세요'}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Btn variant="secondary" size="sm" icon={IconDownload}>Export</Btn>
-          <Btn variant="secondary" size="sm" icon={IconEdit} onClick={() => navigate('ai-recognition', { cardId: card.id })}>Edit</Btn>
+          {(card.status === 'reviewed' || card.status === 'ready_for_review') && <Btn variant="secondary" size="sm" icon={IconEdit} onClick={() => navigate('ai-recognition', { cardId: card.id })}>{card.status === 'reviewed' ? '정보 수정' : '명함 검토'}</Btn>}
         </div>
       </div>
 
@@ -43,7 +42,7 @@ export default function CardDetail({ navigate, cardId }: Props) {
               <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Business Card</span>
             </div>
             <div className="p-5">
-              {card.imageUrl ? <OriginalImage card={card} /> : <div
+              {card.imageUrl ? <OriginalImage key={card.id} card={card} /> : <div
                 className="rounded-xl shadow-md overflow-hidden"
                 style={{ aspectRatio: '1.75', background: 'white', border: '1px solid #E2E8F0', padding: '20px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative' }}
               >
@@ -71,11 +70,7 @@ export default function CardDetail({ navigate, cardId }: Props) {
                 </div>
               </div>}
               <div className="flex items-center justify-between mt-3">
-                <Badge variant={card.status === 'reviewed' ? 'success' : 'warning'}>{card.status === 'reviewed' ? 'Confirmed' : '검토 대기'}</Badge>
-                <div className="flex items-center gap-1">
-                  <AIBadge />
-                  <span className="text-xs" style={{ color: '#94A3B8' }}>{card.confidence}% confidence</span>
-                </div>
+                <Badge variant={card.status === 'reviewed' ? 'success' : 'warning'}>{card.status === 'reviewed' ? '저장 완료' : card.status === 'failed' ? '인식 실패' : card.status === 'ready_for_review' ? '검토 대기' : '명함 읽는 중'}</Badge>
               </div>
             </div>
           </div>
@@ -106,13 +101,11 @@ export default function CardDetail({ navigate, cardId }: Props) {
         {/* Right: Contact info */}
         <div className="lg:col-span-3 space-y-4">
           <AffiliationHistory personId={card.contactId} navigate={navigate} />
-          {!!card.ocrRawText && <div className="bg-white border border-slate-200 rounded-xl p-5"><h2 className="font-semibold mb-4">OCR 인식·테스트 결과</h2><OcrResults card={card} /></div>}
           <div className="bg-white rounded-xl border" style={{ borderColor: '#E2E8F0' }}>
             <div className="px-5 py-4 border-b" style={{ borderColor: '#F1F5F9' }}>
               <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Contact Information</span>
             </div>
             <div className="p-5">
-              {card.imageUrl && <img src={card.imageUrl} alt="명함 원본" className="w-full rounded-lg mb-4 object-contain" />}
               <div className="flex items-center gap-4 mb-5 pb-5" style={{ borderBottom: '1px solid #F1F5F9' }}>
                 <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-bold shrink-0" style={{ background: '#EFF6FF', color: '#2563EB' }}>
                   {x.name.value.slice(0, 1)}
@@ -149,7 +142,7 @@ export default function CardDetail({ navigate, cardId }: Props) {
                           {value}
                         </button>
                       ) : (
-                        <span className="text-sm" style={{ color: '#0F172A' }}>{value}</span>
+                          <span className="min-w-0 break-words text-sm" style={{ color: '#0F172A' }}>{value}</span>
                       )}
                     </div>
                   </div>

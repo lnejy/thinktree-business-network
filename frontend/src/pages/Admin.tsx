@@ -1,3 +1,4 @@
+import { isLiveCard } from '../cardApi';
 import React, { useState } from 'react';
 import { PageName, StatCard, Badge, Btn } from '../Layout';
 import { IconCard, IconBuilding, IconUser, IconAlertTriangle, IconMerge, IconSparkle } from '../icons';
@@ -25,8 +26,8 @@ export default function Admin({ navigate, isAdmin }: Props) {
     );
   }
 
-  const failed = incomingCards.filter(c => c.status === 'failed');
-  const pending = incomingCards.filter(c => c.status === 'ready_for_review' || c.status === 'ai_structuring');
+  const failed = incomingCards.filter(c => isLiveCard(c.id) && c.status === 'failed');
+  const pending = incomingCards.filter(c => isLiveCard(c.id) && c.status === 'ready_for_review');
   const duplicateCandidates = companies.filter(c => c.duplicateCandidateOf);
 
   return (
@@ -112,7 +113,7 @@ export default function Admin({ navigate, isAdmin }: Props) {
           {/* Failed cards */}
           <div className="bg-white rounded-xl border" style={{ borderColor: '#E2E8F0' }}>
             <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: '#F1F5F9' }}>
-              <h3 className="text-sm font-semibold" style={{ color: '#0F172A' }}>AI Recognition Failures</h3>
+              <h3 className="text-sm font-semibold" style={{ color: '#0F172A' }}>다시 읽어야 할 명함</h3>
               <Badge variant="error">{failed.length}</Badge>
             </div>
             <div className="p-3 space-y-2">
@@ -125,10 +126,10 @@ export default function Admin({ navigate, isAdmin }: Props) {
                     <div key={card.id} className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: '#FEF2F2' }}>
                       <IconAlertTriangle size={13} style={{ color: '#DC2626', flexShrink: 0 }} />
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium" style={{ color: '#991B1B' }}>OCR failed</div>
+                        <div className="text-xs font-medium" style={{ color: '#991B1B' }}>명함 읽기 실패</div>
                         <div className="text-xs truncate" style={{ color: '#DC2626' }}>by {uploader?.name} · {formatDate(card.uploadedAt)}</div>
                       </div>
-                      <Btn variant="secondary" size="sm">Retry</Btn>
+                      <Btn variant="secondary" size="sm" onClick={() => navigate('incoming-cards')}>수신 명함 보기</Btn>
                     </div>
                   );
                 })
@@ -139,7 +140,7 @@ export default function Admin({ navigate, isAdmin }: Props) {
           {/* Pending queue */}
           <div className="bg-white rounded-xl border" style={{ borderColor: '#E2E8F0' }}>
             <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: '#F1F5F9' }}>
-              <h3 className="text-sm font-semibold" style={{ color: '#0F172A' }}>AI Review Queue</h3>
+              <h3 className="text-sm font-semibold" style={{ color: '#0F172A' }}>검토 대기</h3>
               <Badge variant="warning">{pending.length}</Badge>
             </div>
             <div className="p-3">

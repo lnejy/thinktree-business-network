@@ -17,9 +17,11 @@ export function LinkReview({
   options: ReviewOptions
   onChange: (options: ReviewOptions) => void
 }) {
+  const needsChoice = needsLinkChoice(card, 'person', options) || needsLinkChoice(card, 'company', options)
   return (
-    <section className="rounded-lg border border-slate-200 p-4 space-y-3">
-      <h3 className="font-semibold text-sm">소속 기준일과 연결</h3>
+    <details key={String(needsChoice)} open={needsChoice || undefined} className="rounded-lg border border-slate-200 p-4">
+      <summary className="cursor-pointer font-semibold text-sm">{needsChoice ? '기존 명함과 연결 확인' : '소속 날짜 및 연결 설정'}</summary>
+      <div className="mt-3 space-y-3">
       <label className="block text-sm">
         확인된 기준일
         <input
@@ -111,6 +113,7 @@ export function LinkReview({
           </div>
         )
       })}
-    </section>
+      </div>
+    </details>
   )
 }
