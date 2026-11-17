@@ -159,34 +159,71 @@ def local_fields(lines):
                 extra=dict(phones=phones, emails=emails, addresses=[], unmapped=lines))
 
 
-def prepare_ocr(image):
+MAX_SKEW_DEGREES = 12
+MIN_SKEW_GAIN = 1.12
+RETRY_BELOW_SCORE = 0.8
+RETRY_BELOW_HORIZONTAL_SHARE = 0.5
+RETRY_ANGLES = (180, 90, 270)
+OCR_LANGUAGES = dict(ko='korean', ja='japan', en='en')
+
+
+def skew_angle(image):
     from PIL import Image, ImageOps
     import numpy as np
 
-    grayscale = ImageOps.autocontrast(ImageOps.grayscale(image), cutoff=1)
-    preview = grayscale.copy()
+    preview = ImageOps.autocontrast(ImageOps.grayscale(image), cutoff=1)
     preview.thumbnail((420, 420))
     ink = np.asarray(preview) < 128
     if not 0.01 <= ink.mean() <= 0.35:
-        return grayscale.convert('RGB')
+        return 0
     mask = Image.fromarray(ink.astype('uint8') * 255)
 
-    def score(angle):
+    def row_sharpness(angle):
         rotated = mask.rotate(angle, expand=True, fillcolor=0)
         rows = (np.asarray(rotated) > 0).sum(axis=1, dtype=float)
         return np.square(rows).sum() / max(rows.sum() ** 2, 1)
 
-    angle = max(range(-12, 13, 3), key=score)
-    if angle:
-        angle = max(range(max(-12, angle - 2), min(12, angle + 2) + 1), key=score)
-        if score(angle) > score(0) * 1.12:
-            grayscale = grayscale.rotate(angle, expand=True, fillcolor=255, resample=Image.Resampling.BICUBIC)
-            ink_bounds = grayscale.point(lambda value: 255 if value < 128 else 0).getbbox()
-            if ink_bounds:
-                left, top, right, bottom = ink_bounds
-                grayscale = grayscale.crop((max(0, left - 40), max(0, top - 40),
-                                            min(grayscale.width, right + 40), min(grayscale.height, bottom + 40)))
-    return grayscale.convert('RGB')
+    coarse = max(range(-MAX_SKEW_DEGREES, MAX_SKEW_DEGREES + 1, 3), key=row_sharpness)
+    if not coarse:
+        return 0
+    fine = max(range(max(-MAX_SKEW_DEGREES, coarse - 2), min(MAX_SKEW_DEGREES, coarse + 2) + 1), key=row_sharpness)
+    return fine if row_sharpness(fine) > row_sharpness(0) * MIN_SKEW_GAIN else 0
+
+
+def border_color(image):
+    import numpy as np
+
+    pixels = np.asarray(image)
+    border = np.concatenate([pixels[0], pixels[-1], pixels[:, 0], pixels[:, -1]])
+    return tuple(int(channel) for channel in np.median(border, axis=0))
+
+
+def prepare_ocr(image):
+    from PIL import Image
+
+    image = image.convert('RGB')
+    angle = skew_angle(image)
+    if not angle:
+        return image
+    return image.rotate(angle, expand=True, fillcolor=border_color(image), resample=Image.Resampling.BICUBIC)
+
+
+def horizontal_text_share(result):
+    wide = total = 0
+    for text, (left, top, right, bottom) in zip(result['texts'], (box[:4] for box in result['boxes'])):
+        total += len(text)
+        if right - left >= bottom - top:
+            wide += len(text)
+    return wide / total if total else 0.0
+
+
+def reading_quality(result):
+    confident_characters = sum(score * len(text) for text, score in zip(result['texts'], result['scores']))
+    return confident_characters * horizontal_text_share(result)
+
+
+def needs_rotation_retry(result):
+    return result['avg_score'] < RETRY_BELOW_SCORE or horizontal_text_share(result) < RETRY_BELOW_HORIZONTAL_SHARE
 
 
 class Pipeline:
@@ -198,28 +235,52 @@ class Pipeline:
     def submit(self, card_id):
         self.pool.submit(self.process, card_id)
 
+    def engine(self, model):
+        import ocr_test
+
+        if model not in self.engines:
+            options = dict(ocr_test.COMMON)
+            if model != 'default':
+                options['lang'] = model
+            self.engines[model] = ocr_test.PaddleOCR(**options)
+        return self.engines[model]
+
+    def read(self, image_path, models):
+        import ocr_test
+
+        results = {model: ocr_test.run_model(self.engine(model), image_path) for model in models}
+        chosen = max(results, key=lambda model: results[model]['avg_score'])
+        return chosen, results[chosen]
+
     def recognize(self, path, language):
         import ocr_test
-        langs = ['korean', 'default'] if language == 'auto' else [dict(ko='korean', ja='japan', en='en')[language]]
         from PIL import Image
 
-        results = {}
+        models = ['korean', 'default'] if language == 'auto' else [OCR_LANGUAGES[language]]
+        rotated = 0
         with tempfile.TemporaryDirectory(dir=self.store.directory) as temporary:
-            corrected = Path(temporary) / 'corrected.png'
+            candidate = Path(temporary) / 'candidate.png'
             with Image.open(path) as image:
-                prepare_ocr(image).save(corrected)
-            for lang in langs:
-                if lang not in self.engines:
-                    options = {**ocr_test.COMMON, 'use_textline_orientation': True}
-                    if lang != 'default':
-                        options['lang'] = lang
-                    self.engines[lang] = ocr_test.PaddleOCR(**options)
-                results[lang] = ocr_test.run_model(self.engines[lang], corrected)
-        chosen = max(results, key=lambda k: results[k]['avg_score'])
-        best = results[chosen]
+                deskewed = prepare_ocr(image)
+            deskewed.save(candidate)
+            chosen, best = self.read(candidate, models)
+            if needs_rotation_retry(best):
+                for angle in RETRY_ANGLES:
+                    deskewed.rotate(angle, expand=True).save(candidate)
+                    model, result = self.read(candidate, models)
+                    if reading_quality(result) > reading_quality(best):
+                        chosen, best, rotated = model, result, angle
         return dict(lines=best['lines'], avg_score=best['avg_score'], chosen_model=chosen,
                     language=ocr_test.detect_language(' '.join(best['texts'])),
-                    boxes=best['boxes'], texts=best['texts'], scores=best['scores'])
+                    boxes=best['boxes'], texts=best['texts'], scores=best['scores'], rotated=rotated)
+
+    def store_upright(self, card_id, path, angle):
+        from PIL import Image
+
+        with Image.open(path) as image:
+            upright = image.rotate(angle, expand=True)
+        upright.save(path)
+        self.store.update(card_id, imageUrl=f'/api/cards/{card_id}/image?turned={angle}')
 
     def process(self, card_id):
         try:
@@ -228,6 +289,8 @@ class Pipeline:
             ocr = self.recognize(path, card['requestedLanguage'])
             if not ocr['lines']:
                 raise ValueError('인식된 글자가 없습니다. 더 선명한 사진으로 다시 등록하세요.')
+            if ocr.get('rotated'):
+                self.store_upright(card_id, path, ocr['rotated'])
             self.store.update(card_id, status='ai_structuring', ocrRawText='\n'.join(ocr['lines']),
                               confidence=round(ocr['avg_score'] * 100, 1), language=ocr['language'], ocr=ocr)
             fields = local_fields(ocr['lines'])
