@@ -53,6 +53,9 @@ class CardApiTests(unittest.TestCase):
         response = self.client.put(url, json={'extracted': fields, 'action': 'confirm'})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'reviewed')
+        invalid = copy.deepcopy(fields)
+        invalid['company']['value'] = ''
+        self.assertEqual(self.client.put(url, json={'extracted': invalid, 'action': 'draft'}).status_code, 422)
         self.assertEqual(Store(self.temp.name).get(card['id'])['extracted']['company']['value'], '테스트 주식회사')
         self.assertEqual(self.client.delete(f'/api/cards/{card["id"]}').status_code, 409)
 

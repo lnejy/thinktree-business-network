@@ -182,7 +182,7 @@ def review(card_id: str, body: Review):
         if set(body.extracted) != set(FIELD_KEYS):
             raise HTTPException(422, '추출 필드 구성이 올바르지 않습니다.')
         extracted = {k: dict(value=v.value.strip(), confidence=v.confidence) for k, v in body.extracted.items()}
-        if body.action == 'confirm':
+        if body.action == 'confirm' or card['status'] == 'reviewed':
             if not extracted['name']['value'] or not extracted['company']['value']:
                 raise HTTPException(422, '확정하려면 회사명과 이름을 입력하세요.')
             email = extracted['email']['value']

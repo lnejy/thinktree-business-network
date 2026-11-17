@@ -5,15 +5,10 @@ export interface LiveCard extends BusinessCard {
   source?: string; engine?: string; model?: string; language?: string;
   ocrRawText?: string; warnings?: string[]; error?: string;
   structured?: Record<string, unknown>; departmentPath?: string[];
-  sourceFileName?: string; originalUrl?: string; visualizationUrl?: string;
+  sourceFileName?: string; originalUrl?: string;
   effectiveDate?: string | null; personLink?: string | null; companyLink?: string | null;
   personReasons?: string[]; companyReasons?: string[];
-  evaluation?: {
-    lineCount: number; hasGroundTruth: boolean;
-    coverage: number | null; accuracy: number | null; lineRecall: number | null;
-    models: Array<{ model: string; confidence: number; textCount: number; selected: boolean }>;
-    groundTruthDetails?: Array<{ ok: boolean; line: string; score: number }>;
-  };
+
 }
 const originals = structuredClone({ incomingCards, confirmedCards, companies, contacts, networkConnections });
 let current: LiveCard[] = [];
@@ -195,10 +190,10 @@ function assignLinks(cards: LiveCard[], kind: LinkKind) {
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try { response = await fetch(path, init); }
-  catch { throw new Error('OCR 서버에 연결할 수 없습니다. 서버 실행 상태를 확인하세요.'); }
+  catch { throw new Error('명함을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.'); }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(typeof body.detail === 'string' ? body.detail : `요청 실패 (${response.status}). 서버 실행 상태와 입력을 확인하세요.`);
+    throw new Error(typeof body.detail === 'string' ? body.detail : `요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.`);
   }
   return response.status === 204 ? undefined as T : response.json();
 }
@@ -255,7 +250,7 @@ export async function refreshCards() {
 }
 export type ReviewOptions = Pick<LiveCard, 'effectiveDate' | 'personLink' | 'companyLink'>;
 export async function saveReview(card: BusinessCard, extracted: BusinessCard['extracted'], action: 'draft' | 'confirm', options?: ReviewOptions) {
-  if (!isLiveCard(card.id)) throw new Error('예시 명함입니다. 명함 등록에서 실제 이미지 또는 샘플 시연을 추가하세요.');
+  if (!isLiveCard(card.id)) throw new Error('등록한 명함만 수정할 수 있습니다.');
   await request(`/api/cards/${card.id}/review`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ extracted, action, ...options }) });
   await refreshCards();
 }

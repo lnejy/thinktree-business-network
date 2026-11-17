@@ -206,8 +206,8 @@ function Breadcrumb({ currentPage }: { currentPage: PageName }) {
     dashboard: 'Dashboard',
     'my-cards': 'My Cards',
     'add-card': 'Add Card',
-    'incoming-cards': 'Incoming Cards',
-    'ai-recognition': 'AI Recognition Result',
+    'incoming-cards': '수신 명함',
+    'ai-recognition': '명함 검토',
     companies: 'Companies',
     'company-detail': 'Company Detail',
     'org-chart': 'Organization Chart',
@@ -245,45 +245,6 @@ export function Badge({ children, variant = 'default', className = '' }: {
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${className}`} style={{ ...s, fontFamily: 'DM Mono, monospace' }}>
       {children}
-    </span>
-  );
-}
-
-export function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'error' | 'info' | 'ai' | 'muted' }> = {
-    uploading: { label: 'Uploading', variant: 'muted' },
-    ocr_processing: { label: 'OCR Processing', variant: 'info' },
-    ai_structuring: { label: 'AI Structuring', variant: 'ai' },
-    ready_for_review: { label: 'Ready for Review', variant: 'warning' },
-    reviewed: { label: 'Reviewed', variant: 'success' },
-    failed: { label: 'Failed', variant: 'error' },
-  };
-  const m = map[status] || { label: status, variant: 'default' as const };
-  return <Badge variant={m.variant}>{m.label}</Badge>;
-}
-
-export function ConfidenceBadge({ level, score }: { level?: 'high' | 'medium' | 'low'; score?: number }) {
-  if (level) {
-    const map = {
-      high: { variant: 'success' as const, label: 'High' },
-      medium: { variant: 'warning' as const, label: 'Med' },
-      low: { variant: 'error' as const, label: 'Low' },
-    };
-    const { variant, label } = map[level];
-    return <Badge variant={variant}>{label}</Badge>;
-  }
-  if (score !== undefined) {
-    const variant = score >= 85 ? 'success' as const : score >= 65 ? 'warning' as const : 'error' as const;
-    return <Badge variant={variant}>{score}%</Badge>;
-  }
-  return null;
-}
-
-export function AIBadge() {
-  return (
-    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#F5F3FF', color: '#7C3AED', fontFamily: 'DM Mono, monospace', fontSize: '10px' }}>
-      <IconSparkle size={10} />
-      AI
     </span>
   );
 }

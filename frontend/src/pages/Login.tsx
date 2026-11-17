@@ -49,7 +49,7 @@ export default function Login({ onLogin }: LoginProps) {
           <div className="space-y-4">
             {[
               { label: 'Mobile Capture', desc: 'Photograph cards with your phone' },
-              { label: 'AI Recognition', desc: 'Automatic OCR & data extraction' },
+              { label: 'AI Recognition', desc: 'Automatically fills in card details' },
               { label: 'Org Visualization', desc: 'Auto-build client organization charts' },
             ].map(({ label, desc }) => (
               <div key={label} className="flex items-start gap-3">

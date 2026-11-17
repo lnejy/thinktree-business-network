@@ -1,5 +1,6 @@
+import { isLiveCard } from '../cardApi';
 import React from 'react';
-import { PageName, StatCard, Badge, SectionHeader, Btn, AIBadge } from '../Layout';
+import { PageName, StatCard, Badge, SectionHeader, Btn } from '../Layout';
 import { IconCard, IconBuilding, IconUser, IconInbox, IconArrowRight, IconSparkle, IconRefresh } from '../icons';
 import { employees, confirmedCards, incomingCards, companies, contacts, formatDateTime } from '../data';
 
@@ -11,8 +12,8 @@ interface Props {
 
 export default function Dashboard({ navigate, isAdmin, userId }: Props) {
   const myCards = confirmedCards.filter(c => c.ownerId === userId);
-  const pending = incomingCards.filter(c => c.status === 'ready_for_review' || c.status === 'ai_structuring');
-  const failed = incomingCards.filter(c => c.status === 'failed');
+  const pending = incomingCards.filter(c => isLiveCard(c.id) && c.status === 'ready_for_review');
+  const failed = incomingCards.filter(c => isLiveCard(c.id) && c.status === 'failed');
 
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-6">
@@ -30,7 +31,7 @@ export default function Dashboard({ navigate, isAdmin, userId }: Props) {
             <span className="text-sm font-semibold" style={{ color: '#92400E' }}>
               {pending.length} card{pending.length > 1 ? 's' : ''} waiting for your review
             </span>
-            <span className="text-xs ml-2" style={{ color: '#B45309' }}>AI recognition complete — confirm before saving</span>
+            <span className="text-xs ml-2" style={{ color: '#B45309' }}>저장하기 전에 정보를 확인하세요.</span>
           </div>
           <div className="flex items-center gap-1 text-xs font-medium" style={{ color: '#D97706' }}>
             Review now <IconArrowRight size={13} />
@@ -45,7 +46,7 @@ export default function Dashboard({ navigate, isAdmin, userId }: Props) {
           <StatCard label="Client Companies" value={companies.length} sub="Unique organizations" icon={IconBuilding} />
           <StatCard label="Client Contacts" value={contacts.length} sub="Across all companies" icon={IconUser} />
           <StatCard
-            label="Pending AI Review"
+            label="검토 대기"
             value={pending.length}
             sub={failed.length > 0 ? `${failed.length} failed` : 'From mobile uploads'}
             icon={IconInbox}
@@ -67,12 +68,12 @@ export default function Dashboard({ navigate, isAdmin, userId }: Props) {
             </div>
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#F59E0B' }} />
-              <span className="text-xs" style={{ color: '#64748B' }}>AI review queue</span>
+              <span className="text-xs" style={{ color: '#64748B' }}>검토 대기</span>
               <span className="text-xs font-bold ml-auto" style={{ color: '#D97706', fontFamily: 'DM Mono, monospace' }}>{pending.length}</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#EF4444' }} />
-              <span className="text-xs" style={{ color: '#64748B' }}>OCR failed</span>
+              <span className="text-xs" style={{ color: '#64748B' }}>명함 읽기 실패</span>
               <span className="text-xs font-bold ml-auto" style={{ color: '#EF4444', fontFamily: 'DM Mono, monospace' }}>{failed.length}</span>
             </div>
           </div>
@@ -127,7 +128,7 @@ export default function Dashboard({ navigate, isAdmin, userId }: Props) {
               <Btn variant="ghost" size="sm" onClick={() => navigate('incoming-cards')}>View all</Btn>
             </div>
             <div className="p-4 space-y-2.5">
-              {incomingCards.slice(0, 3).map(card => {
+              {incomingCards.filter(c => isLiveCard(c.id)).slice(0, 3).map(card => {
                 const uploader = employees.find(e => e.id === card.ownerId);
                 const isReady = card.status === 'ready_for_review';
                 return (
