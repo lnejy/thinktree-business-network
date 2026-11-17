@@ -1,22 +1,46 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PageName, Badge, Btn } from '../Layout';
 import { IconPhone, IconMail, IconMapPin, IconGlobe, IconBuilding, IconUser, IconEdit } from '../icons';
-import { confirmedCards, incomingCards, employees, companies, contacts } from '../data';
-import type { LiveCard } from '../cardApi';
+import { cardOwners, confirmedCards, incomingCards, employees, companies, contacts } from '../data';
+import { isLiveCard, refreshCards, request, type LiveCard } from '../cardApi';
 import { OriginalImage } from '../components/CardEvidence';
 import { AffiliationHistory } from '../components/AffiliationHistory';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
   cardId?: string;
+  userId: string;
+  isAdmin: boolean;
 }
 
-export default function CardDetail({ navigate, cardId }: Props) {
-  const card = ([...confirmedCards, ...incomingCards].find(c => c.id === cardId) || confirmedCards[0]) as LiveCard;
-  const owner = employees.find(e => e.id === card.ownerId);
+export default function CardDetail({ navigate, cardId, userId, isAdmin }: Props) {
+  const [recipient, setRecipient] = useState('');
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState('');
+  const card = [...confirmedCards, ...incomingCards].find(c => c.id === cardId) as LiveCard | undefined;
+  if (!card) return <p className="p-6 text-sm text-slate-600">명함을 찾을 수 없습니다.</p>;
   const company = companies.find(c => c.id === card.companyId);
   const contact = contacts.find(c => c.id === card.contactId);
-  const allOwners = contact ? employees.filter(e => contact.ownerIds.includes(e.id)) : [owner].filter(Boolean);
+  const owners = cardOwners(card);
+  const allOwners = employees.filter(e => owners.includes(e.id));
+  const candidates = employees.filter(e => !owners.includes(e.id));
+  const canEdit = isLiveCard(card.id) && (isAdmin || owners.includes(userId));
+
+  async function addRecipient(id: string) {
+    setSharing(true);
+    setShareError('');
+    try {
+      await request(`/api/cards/${id}/owners`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerIds: [recipient] }),
+      });
+      setRecipient('');
+      await refreshCards();
+    } catch (error) {
+      setShareError((error as Error).message);
+    } finally {
+      setSharing(false);
+    }
+  }
 
   const x = card.extracted;
 
@@ -29,7 +53,7 @@ export default function CardDetail({ navigate, cardId }: Props) {
           <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>{card.status === 'reviewed' ? '확정한 명함' : '사진과 명함 정보를 확인하세요'}</p>
         </div>
         <div className="flex items-center gap-2">
-          {(card.status === 'reviewed' || card.status === 'ready_for_review') && <Btn variant="secondary" size="sm" icon={IconEdit} onClick={() => navigate('ai-recognition', { cardId: card.id })}>{card.status === 'reviewed' ? '정보 수정' : '명함 검토'}</Btn>}
+          {canEdit && (card.status === 'reviewed' || card.status === 'ready_for_review') && <Btn variant="secondary" size="sm" icon={IconEdit} onClick={() => navigate('ai-recognition', { cardId: card.id })}>{card.status === 'reviewed' ? '정보 수정' : '명함 검토'}</Btn>}
         </div>
       </div>
 
@@ -78,22 +102,30 @@ export default function CardDetail({ navigate, cardId }: Props) {
           {/* Card owners */}
           <div className="bg-white rounded-xl border" style={{ borderColor: '#E2E8F0' }}>
             <div className="px-4 py-3 border-b" style={{ borderColor: '#F1F5F9' }}>
-              <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Card Owners</span>
+              <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>명함 받은 사람</span>
             </div>
             <div className="p-4 space-y-2.5">
-              <p className="text-xs" style={{ color: '#64748B' }}>This card is held by:</p>
-              {allOwners.map(emp => emp && (
+              {allOwners.map(emp => (
                 <div key={emp.id} className="flex items-center gap-3 p-2.5 rounded-lg" style={{ background: '#F8FAFC' }}>
                   <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold text-white shrink-0" style={{ background: emp.avatarColor }}>
                     {emp.name.slice(0, 1)}
                   </div>
                   <div className="flex-1">
                     <div className="text-sm font-medium" style={{ color: '#0F172A' }}>{emp.name}</div>
-                    <div className="text-xs" style={{ color: '#64748B' }}>{emp.position} · {emp.department}</div>
+                    <div className="text-xs" style={{ color: '#64748B' }}>{emp.company}</div>
                   </div>
-                  <span className="text-xs" style={{ color: '#94A3B8', fontFamily: 'DM Mono, monospace' }}>{emp.email.split('@')[0]}</span>
                 </div>
               ))}
+              {canEdit && card.status === 'reviewed' && candidates.length > 0 && (
+                <form onSubmit={event => { event.preventDefault(); if (recipient && !sharing) void addRecipient(card.id); }} className="flex flex-wrap gap-2 pt-2">
+                  <select aria-label="명함을 함께 받은 팀원" value={recipient} onChange={event => setRecipient(event.target.value)} disabled={sharing} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white p-2 text-sm">
+                    <option value="">함께 받은 팀원 선택</option>
+                    {candidates.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+                  </select>
+                  <button disabled={!recipient || sharing} className="rounded-lg bg-blue-700 px-3 text-sm font-medium text-white disabled:opacity-50">추가</button>
+                </form>
+              )}
+              {shareError && <p role="alert" className="text-sm text-red-700">{shareError}</p>}
             </div>
           </div>
         </div>

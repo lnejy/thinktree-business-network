@@ -13,81 +13,110 @@ import Search from './pages/Search';
 import Admin from './pages/Admin';
 import CardDetail from './pages/CardDetail';
 import MobileCapture from './pages/MobileCapture';
-import { incomingCards } from './data';
-import { isLiveCard, refreshCards, subscribeCards, cardRevision } from './cardApi';
+import { employees, incomingCards } from './data';
+import { isLiveCard, refreshCards, resetCards, RequestError, subscribeCards, cardRevision } from './cardApi';
+import { endSession, getSession, type Session } from './authApi';
 
 interface AppState {
   page: PageName;
   params: Record<string, string>;
-  isLoggedIn: boolean;
-  isAdmin: boolean;
-  userName: string;
-  userId: string;
 }
 
 export default function App() {
   useSyncExternalStore(subscribeCards, cardRevision);
   const [connectionError, setConnectionError] = useState('');
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [user, setUser] = useState<Session['user'] | null>(null);
+  const [state, setState] = useState<AppState>({ page: 'dashboard', params: {} });
+
+  function handleLogin(session: Session) {
+    resetCards();
+    employees.splice(0, employees.length, ...session.employees);
+    setConnectionError('');
+    setState({ page: 'dashboard', params: {} });
+    setUser(session.user);
+  }
+
+  function clearSession() {
+    employees.length = 0;
+    resetCards();
+    setConnectionError('');
+    setUser(null);
+  }
+
   useEffect(() => {
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
+    void getSession(controller.signal).then(session => {
+      if (!controller.signal.aborted) handleLogin(session);
+    }).catch(error => {
+      if (!controller.signal.aborted && !(error instanceof RequestError && error.status === 401)) {
+        setConnectionError(error.message);
+      }
+    }).finally(() => {
+      if (!controller.signal.aborted) setCheckingSession(false);
+    });
+    return () => controller.abort();
+  }, []);
+
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
-      try { await refreshCards(); if (!stopped) setConnectionError(''); }
-      catch (e) { if (!stopped) setConnectionError((e as Error).message); }
-      if (!stopped) timer = setTimeout(poll, 3000);
+      try {
+        const session = await getSession(signal);
+        if (signal.aborted) return;
+        if (session.user.id !== userId) {
+          handleLogin(session);
+          return;
+        }
+        employees.splice(0, employees.length, ...session.employees);
+        await refreshCards(signal);
+        if (!signal.aborted) setConnectionError('');
+      } catch (error) {
+        if (signal.aborted) return;
+        if (error instanceof RequestError && error.status === 401) {
+          clearSession();
+          return;
+        }
+        setConnectionError((error as Error).message);
+      }
+      if (!signal.aborted) timer = setTimeout(poll, 3000);
     };
     void poll();
-    return () => { stopped = true; clearTimeout(timer); };
-  }, []);
-  const [state, setState] = useState<AppState>({
-    page: 'login',
-    params: {},
-    isLoggedIn: false,
-    isAdmin: false,
-    userName: '',
-    userId: 'e1',
-  });
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [userId]);
 
   const navigate = (page: PageName, params: Record<string, string> = {}) => {
     setState(s => ({ ...s, page, params }));
     window.scrollTo(0, 0);
   };
 
-  const handleLogin = (email: string, isAdmin: boolean) => {
-    const userMap: Record<string, { name: string; id: string }> = {
-      'minsu.kim@cardsync.io': { name: '김민수', id: 'e1' },
-      'jiyoung.lee@cardsync.io': { name: '이지영', id: 'e2' },
-      'sungho.park@cardsync.io': { name: '박성호', id: 'e3' },
-      'yerin.choi@cardsync.io': { name: '최예린', id: 'e4' },
-      'hyunwoo.jung@cardsync.io': { name: '정현우', id: 'e5' },
-    };
-    const user = userMap[email] || { name: email.split('@')[0], id: 'e1' };
-    setState(s => ({
-      ...s,
-      isLoggedIn: true,
-      isAdmin,
-      userName: user.name,
-      userId: user.id,
-      page: 'dashboard',
-      params: {},
-    }));
-  };
-
-  if (!state.isLoggedIn) {
-    return <Login onLogin={handleLogin} />;
+  async function handleLogout() {
+    try {
+      await endSession();
+      clearSession();
+    } catch (error) {
+      setConnectionError((error as Error).message);
+    }
   }
 
+  if (checkingSession) return <main role="status" className="p-6 text-sm text-slate-600">로그인 상태를 확인하는 중…</main>;
+  if (!user) return <Login onLogin={handleLogin} connectionError={connectionError} />;
+  const isAdmin = user.role === 'admin';
   const pendingCount = incomingCards.filter(c => isLiveCard(c.id) && c.status === 'ready_for_review').length;
 
   const renderPage = () => {
     const { page, params } = state;
     switch (page) {
       case 'dashboard':
-        return <Dashboard navigate={navigate} isAdmin={state.isAdmin} userId={state.userId} />;
+        return <Dashboard navigate={navigate} isAdmin={isAdmin} userId={user.id} />;
       case 'my-cards':
-        return <MyCards navigate={navigate} userId={state.userId} />;
+        return <MyCards navigate={navigate} userId={user.id} />;
       case 'add-card':
-        return <MobileCapture navigate={navigate} userId={state.userId} />;
+        return <MobileCapture navigate={navigate} />;
       case 'incoming-cards':
         return <IncomingCards navigate={navigate} />;
       case 'ai-recognition':
@@ -99,17 +128,17 @@ export default function App() {
       case 'org-chart':
         return <OrgChart navigate={navigate} />;
       case 'business-network':
-        return <BusinessNetwork navigate={navigate} />;
+        return <BusinessNetwork navigate={navigate} companyName={user.company} />;
       case 'search':
         return <Search navigate={navigate} />;
       case 'admin':
-        return <Admin navigate={navigate} isAdmin={state.isAdmin} />;
+        return <Admin navigate={navigate} isAdmin={isAdmin} />;
       case 'card-detail':
-        return <CardDetail navigate={navigate} cardId={params.cardId} />;
+        return <CardDetail key={params.cardId} navigate={navigate} cardId={params.cardId} userId={user.id} isAdmin={isAdmin} />;
       case 'mobile-capture':
-        return <MobileCapture navigate={navigate} userId={state.userId} />;
+        return <MobileCapture navigate={navigate} />;
       default:
-        return <Dashboard navigate={navigate} isAdmin={state.isAdmin} userId={state.userId} />;
+        return <Dashboard navigate={navigate} isAdmin={isAdmin} userId={user.id} />;
     }
   };
 
@@ -117,8 +146,9 @@ export default function App() {
     <Layout
       currentPage={state.page}
       navigate={navigate}
-      isAdmin={state.isAdmin}
-      userName={state.userName}
+      isAdmin={isAdmin}
+      userName={user.name}
+      onLogout={handleLogout}
       pendingCount={pendingCount}
     >
       {connectionError && <div role="alert" className="px-6 py-3 bg-amber-50 text-amber-800 text-sm">{connectionError}</div>}

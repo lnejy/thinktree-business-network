@@ -2,6 +2,7 @@ const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
+const { baseUrl, login } = require('./test-login.cjs');
 
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -9,10 +10,9 @@ const fs = require('node:fs');
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    const saved = (await (await page.request.get('http://127.0.0.1:8000/api/cards')).json()).filter(c => c.source === 'evaluation');
+    await login(page);
+    const saved = (await (await page.request.get(`${baseUrl}/api/cards`)).json()).filter(c => c.source === 'evaluation');
     assert.equal(saved.length, 20);
-    await page.goto('http://localhost:8443');
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.getByRole('button', { name: /^Incoming Cards/ }).first().click();
     await page.getByRole('main').getByRole('heading', { name: '수신 명함', exact: true }).waitFor();
     for (const card of saved) {

@@ -35,10 +35,8 @@ const statuses: Record<LiveCard["status"], string> = {
 
 export default function MobileCapture({
   navigate,
-  userId,
 }: {
   navigate: (page: PageName, params?: Record<string, string>) => void
-  userId: string
 }) {
   const [jobs, setJobs] = useState<LiveCard[]>([])
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
@@ -80,7 +78,6 @@ export default function MobileCapture({
         try {
           const data = new FormData()
           data.append("file", file)
-          data.append("ownerId", userId)
           const card = await request<LiveCard>("/api/cards", {
             method: "POST",
             body: data,

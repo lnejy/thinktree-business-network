@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   IconDashboard, IconCard, IconPlus, IconBuilding, IconSitemap,
   IconNetwork, IconSearch, IconSettings, IconAdmin, IconInbox,
-  IconBell, IconChevronDown, IconUser, IconLogOut, IconSparkle
+  IconBell, IconChevronDown, IconLogOut, IconSparkle
 } from './icons';
 
 export type PageName =
@@ -16,6 +16,7 @@ interface LayoutProps {
   navigate: (page: PageName, params?: Record<string, string>) => void;
   isAdmin: boolean;
   userName: string;
+  onLogout: () => Promise<void>;
   pendingCount?: number;
 }
 
@@ -34,7 +35,7 @@ const adminItems: Array<{ id: PageName; label: string; icon: React.ComponentType
   { id: 'settings', label: 'Settings', icon: IconSettings },
 ];
 
-export default function Layout({ children, currentPage, navigate, isAdmin, userName, pendingCount = 0 }: LayoutProps) {
+export default function Layout({ children, currentPage, navigate, isAdmin, userName, onLogout, pendingCount = 0 }: LayoutProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) ||
@@ -50,7 +51,7 @@ export default function Layout({ children, currentPage, navigate, isAdmin, userN
             <IconCard size={16} className="text-white" />
           </div>
           <div>
-            <div className="font-semibold text-sm" style={{ color: '#0F172A', letterSpacing: '-0.01em' }}>CardSync</div>
+            <div className="font-semibold text-sm" style={{ color: '#0F172A', letterSpacing: '-0.01em' }}>ThinkTree</div>
             <div className="text-xs" style={{ color: '#94A3B8', fontFamily: 'DM Mono, monospace' }}>B2B Network</div>
           </div>
         </div>
@@ -120,20 +121,15 @@ export default function Layout({ children, currentPage, navigate, isAdmin, userN
         <div className="px-3 py-3 border-t relative" style={{ borderColor: '#E2E8F0' }}>
           {userMenuOpen && (
             <div className="absolute bottom-16 left-3 right-3 bg-white border rounded-lg shadow-lg py-1 z-50" style={{ borderColor: '#E2E8F0' }}>
-              <button className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 transition-colors" style={{ color: '#475569' }}>
-                <IconUser size={14} />Profile
-              </button>
-              <button className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 transition-colors" style={{ color: '#475569' }}>
-                <IconSettings size={14} />Settings
-              </button>
-              <div style={{ borderTop: '1px solid #F1F5F9', margin: '4px 0' }} />
-              <button className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 transition-colors" style={{ color: '#EF4444' }}>
-                <IconLogOut size={14} />Sign out
+              <button onClick={() => { setUserMenuOpen(false); void onLogout(); }} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 transition-colors" style={{ color: '#EF4444' }}>
+                <IconLogOut size={14} />로그아웃
               </button>
             </div>
           )}
           <button
             onClick={() => setUserMenuOpen(v => !v)}
+            aria-label="계정 메뉴"
+            aria-expanded={userMenuOpen}
             className="flex items-center gap-2.5 w-full px-2 py-2 rounded-md hover:bg-gray-50 transition-colors"
           >
             <div className="flex items-center justify-center w-7 h-7 rounded-full text-white text-xs font-semibold shrink-0" style={{ background: '#2563EB' }}>
@@ -190,6 +186,7 @@ export default function Layout({ children, currentPage, navigate, isAdmin, userN
         {/* Content */}
         <nav className="md:hidden flex gap-2 px-3 py-2 bg-white border-b overflow-x-auto shrink-0" aria-label="모바일 메뉴">
           {navItems.map(({ id, label }) => <button key={id} onClick={() => navigate(id)} className={`shrink-0 text-xs rounded-full px-3 py-2 ${currentPage === id ? 'bg-blue-50 text-blue-600' : 'text-slate-500'}`}>{label}</button>)}
+          <button onClick={() => void onLogout()} className="shrink-0 rounded-full px-3 py-2 text-xs text-slate-600">로그아웃</button>
         </nav>
         <main className="flex-1 overflow-auto">
           <div className="fade-in">

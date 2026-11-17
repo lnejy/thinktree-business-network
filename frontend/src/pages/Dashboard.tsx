@@ -2,7 +2,7 @@ import { isLiveCard } from '../cardApi';
 import React from 'react';
 import { PageName, StatCard, Badge, SectionHeader, Btn } from '../Layout';
 import { IconCard, IconBuilding, IconUser, IconInbox, IconArrowRight, IconSparkle, IconRefresh } from '../icons';
-import { employees, confirmedCards, incomingCards, companies, contacts, formatDateTime } from '../data';
+import { cardOwners, employees, confirmedCards, incomingCards, companies, contacts, formatDateTime } from '../data';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default function Dashboard({ navigate, isAdmin, userId }: Props) {
-  const myCards = confirmedCards.filter(c => c.ownerId === userId);
+  const myCards = confirmedCards.filter(c => cardOwners(c).includes(userId));
   const pending = incomingCards.filter(c => isLiveCard(c.id) && c.status === 'ready_for_review');
   const failed = incomingCards.filter(c => isLiveCard(c.id) && c.status === 'failed');
 

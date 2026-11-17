@@ -5,11 +5,12 @@ from contextlib import asynccontextmanager
 from datetime import date
 from typing import Literal
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field
 
+from accounts import Accounts, COOKIE, SESSION_SECONDS, card_owners, distribute_legacy_cards
 from card_service import BASE, FIELD_KEYS, Pipeline, Store, map_structured, now
 from evaluation_import import import_evaluation
 
@@ -21,7 +22,9 @@ pipeline = Pipeline(store)
 
 @asynccontextmanager
 async def lifespan(app):
+    Accounts(store).initialize()
     import_evaluation(store)
+    distribute_legacy_cards(store)
     for card in store.all():
         if card['status'] in ('uploading', 'ocr_processing', 'ai_structuring'):
             store.update(card['id'], status='failed', error='서버가 재시작되어 처리가 중단됐습니다. 재시도하세요.')
@@ -32,11 +35,86 @@ async def lifespan(app):
 app = FastAPI(title='ThinkTree local OCR API', lifespan=lifespan)
 
 
-def get_card(card_id):
+@app.middleware('http')
+async def protect_private_responses(request, call_next):
+    if (request.url.path.startswith('/api/') and request.method not in ('GET', 'HEAD', 'OPTIONS')
+            and request.headers.get('sec-fetch-site') in ('cross-site', 'same-site')):
+        return JSONResponse({'detail': 'ThinkTree 화면에서 다시 시도하세요.'}, status_code=403)
+    response = await call_next(request)
+    if request.url.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+def require_user(request: Request):
+    user = Accounts(store).session_user(request.cookies.get(COOKIE))
+    if not user:
+        raise HTTPException(401, '로그인이 필요합니다.')
+    return user
+
+
+def require_admin(user=Depends(require_user)):
+    if user['role'] != 'admin':
+        raise HTTPException(403, '관리자만 이용할 수 있습니다.')
+    return user
+
+
+class LoginBody(BaseModel):
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=128)
+
+
+class SignupBody(LoginBody):
+    name: str = Field(max_length=50)
+    inviteCode: str = Field(max_length=128)
+
+
+def session_response(request, response, user):
+    accounts = Accounts(store)
+    token = accounts.start_session(user['id'], request.cookies.get(COOKIE, ''))
+    response.set_cookie(COOKIE, token, max_age=SESSION_SECONDS, httponly=True,
+                        secure=request.url.scheme == 'https', samesite='strict')
+    return {'user': user, 'employees': accounts.employees()}
+
+
+@app.post('/api/auth/login')
+def login(request: Request, response: Response, body: LoginBody):
+    user = Accounts(store).authenticate(body.username, body.password)
+    return session_response(request, response, user)
+
+
+@app.post('/api/auth/signup', status_code=201)
+def signup(request: Request, response: Response, body: SignupBody):
+    user = Accounts(store).register(body.username, body.name, body.password, body.inviteCode)
+    return session_response(request, response, user)
+
+
+@app.get('/api/auth/me')
+def me(user=Depends(require_user)):
+    return {'user': user, 'employees': Accounts(store).employees()}
+
+
+@app.post('/api/auth/logout', status_code=204)
+def logout(request: Request, response: Response):
+    Accounts(store).end_session(request.cookies.get(COOKIE, ''))
+    response.delete_cookie(COOKIE, httponly=True, samesite='strict')
+
+
+private = APIRouter(dependencies=[Depends(require_user)])
+
+
+def can_edit(card, user):
+    return user['role'] == 'admin' or user['id'] in card_owners(card)
+
+
+def get_card(card_id, user, *, edit=False):
     try:
-        return store.get(card_id)
+        card = store.get(card_id)
     except KeyError:
-        raise HTTPException(404, '명함을 찾을 수 없습니다.')
+        raise HTTPException(404, '명함을 찾을 수 없습니다.') from None
+    if (edit or card['status'] != 'reviewed') and not can_edit(card, user):
+        raise HTTPException(403, '이 명함을 관리할 권한이 없습니다.')
+    return card
 
 
 @app.get('/api/health')
@@ -44,18 +122,20 @@ def health():
     return {'status': 'ok', 'mode': 'local-development', 'engines': ['local', 'gemini', 'claude']}
 
 
-@app.get('/api/cards')
-def cards():
-    return store.all()
+@private.get('/api/cards')
+def cards(user=Depends(require_user)):
+    return [card for card in store.all() if card['status'] == 'reviewed' or can_edit(card, user)]
 
 
-@app.post('/api/evaluation/import')
+@private.post('/api/evaluation/import', dependencies=[Depends(require_admin)])
 def import_saved_evaluation():
     with store.lock:
-        return import_evaluation(store)
+        result = import_evaluation(store)
+        distribute_legacy_cards(store)
+        return result
 
 
-@app.get('/api/evaluation/report')
+@private.get('/api/evaluation/report', dependencies=[Depends(require_admin)])
 def evaluation_report():
     path = BASE / 'OCR_테스트_결과.html'
     if not path.is_file():
@@ -66,26 +146,26 @@ def evaluation_report():
     })
 
 
-@app.get('/api/cards/{card_id}')
-def card_detail(card_id: str):
-    return get_card(card_id)
+@private.get('/api/cards/{card_id}')
+def card_detail(card_id: str, user=Depends(require_user)):
+    return get_card(card_id, user)
 
 
-@app.get('/api/cards/{card_id}/image')
-def image(card_id: str):
-    card = get_card(card_id)
+@private.get('/api/cards/{card_id}/image')
+def image(card_id: str, user=Depends(require_user)):
+    card = get_card(card_id, user)
     path = store.images / f'{card["id"]}.png'
     if not path.is_file():
         raise HTTPException(404, '원본 이미지가 없습니다.')
     return FileResponse(path, media_type='image/png', headers={'Cache-Control': 'private, max-age=3600'})
 
 
-def stored_asset(card_id, kind):
-    card = get_card(card_id)
+def stored_asset(card_id, kind, user):
+    card = get_card(card_id, user)
     extension = card.get(f'{kind}Extension')
     if extension not in ('.jpg', '.jpeg', '.png', '.bmp', '.webp'):
         if kind == 'original':
-            return image(card_id)
+            return image(card_id, user)
         raise HTTPException(404, 'OCR 영역 이미지가 없습니다.')
     directory = store.originals if kind == 'original' else store.visualizations
     path = directory / f'{card["id"]}{extension}'
@@ -94,14 +174,14 @@ def stored_asset(card_id, kind):
     return FileResponse(path, headers={'Cache-Control': 'private, max-age=3600'})
 
 
-@app.get('/api/cards/{card_id}/original')
-def original_image(card_id: str):
-    return stored_asset(card_id, 'original')
+@private.get('/api/cards/{card_id}/original')
+def original_image(card_id: str, user=Depends(require_user)):
+    return stored_asset(card_id, 'original', user)
 
 
-@app.get('/api/cards/{card_id}/ocr-image')
-def ocr_image(card_id: str):
-    return stored_asset(card_id, 'visualization')
+@private.get('/api/cards/{card_id}/ocr-image')
+def ocr_image(card_id: str, user=Depends(require_user)):
+    return stored_asset(card_id, 'visualization', user)
 
 
 def normalize_image(content):
@@ -121,18 +201,17 @@ def normalize_image(content):
         raise HTTPException(400, str(exc) if isinstance(exc, ValueError) else '읽을 수 없는 이미지입니다.')
 
 
-@app.post('/api/cards', status_code=202)
-async def upload(file: UploadFile = File(...), ownerId: str = Form('e1'),
+@private.post('/api/cards', status_code=202)
+async def upload(file: UploadFile = File(...),
                  engine: Literal['local', 'gemini', 'claude'] = Form('local'),
-                 language: Literal['auto', 'ko', 'ja', 'en'] = Form('auto')):
-    if ownerId not in ('e1', 'e2', 'e3', 'e4', 'e5'):
-        raise HTTPException(400, '알 수 없는 소유자입니다.')
+                 language: Literal['auto', 'ko', 'ja', 'en'] = Form('auto'),
+                 user=Depends(require_user)):
     content = await file.read(MAX_BYTES + 1)
     await file.close()
     if len(content) > MAX_BYTES:
         raise HTTPException(413, '파일은 15MB 이하로 등록하세요.')
     image, extension = normalize_image(content)
-    card = store.create(ownerId, engine, language)
+    card = store.create(user['id'], engine, language)
     try:
         image.save(store.images / f'{card["id"]}.png')
         store.originals.mkdir(exist_ok=True)
@@ -147,10 +226,10 @@ async def upload(file: UploadFile = File(...), ownerId: str = Form('e1'),
     return card
 
 
-@app.post('/api/cards/{card_id}/retry', status_code=202)
-def retry(card_id: str):
+@private.post('/api/cards/{card_id}/retry', status_code=202)
+def retry(card_id: str, user=Depends(require_user)):
     with store.lock:
-        card = get_card(card_id)
+        card = get_card(card_id, user, edit=True)
         if card['status'] != 'failed' or card.get('source') == 'sample':
             raise HTTPException(409, '실패한 업로드 명함만 재시도할 수 있습니다.')
         card = store.update(card_id, status='ocr_processing', error=None)
@@ -173,10 +252,10 @@ class Review(BaseModel):
     companyLink: str | None = Field(default=None, max_length=100)
 
 
-@app.put('/api/cards/{card_id}/review')
-def review(card_id: str, body: Review):
+@private.put('/api/cards/{card_id}/review')
+def review(card_id: str, body: Review, user=Depends(require_user)):
     with store.lock:
-        card = get_card(card_id)
+        card = get_card(card_id, user, edit=True)
         if card['status'] not in ('ready_for_review', 'reviewed'):
             raise HTTPException(409, '처리가 끝난 명함만 저장할 수 있습니다.')
         if set(body.extracted) != set(FIELD_KEYS):
@@ -208,7 +287,7 @@ def review(card_id: str, body: Review):
                 if target in seen:
                     raise HTTPException(422, '서로를 참조하는 연결은 저장할 수 없습니다.')
                 seen.add(target)
-                reference = get_card(target)
+                reference = get_card(target, user)
                 if reference['status'] != 'reviewed':
                     raise HTTPException(422, '확정된 명함만 연결할 수 있습니다.')
                 target = reference.get(key)
@@ -229,10 +308,27 @@ def review(card_id: str, body: Review):
         return card
 
 
-@app.delete('/api/cards/{card_id}', status_code=204)
-def reject(card_id: str):
+class CardOwners(BaseModel):
+    ownerIds: list[str] = Field(min_length=1, max_length=100)
+
+
+@private.put('/api/cards/{card_id}/owners')
+def set_owners(card_id: str, body: CardOwners, user=Depends(require_user)):
     with store.lock:
-        card = get_card(card_id)
+        card = get_card(card_id, user, edit=True)
+        if card['status'] != 'reviewed':
+            raise HTTPException(409, '명함을 확정한 후 받은 사람을 추가할 수 있습니다.')
+        owners = list(dict.fromkeys([*card_owners(card), *body.ownerIds]))
+        employee_ids = {employee['id'] for employee in Accounts(store).employees()}
+        if not set(owners) <= employee_ids:
+            raise HTTPException(422, '팀에 속한 사람을 선택하세요.')
+        return store.update(card_id, ownerIds=owners)
+
+
+@private.delete('/api/cards/{card_id}', status_code=204)
+def reject(card_id: str, user=Depends(require_user)):
+    with store.lock:
+        card = get_card(card_id, user, edit=True)
         if card['status'] not in ('ready_for_review', 'failed'):
             raise HTTPException(409, '검토 대기 또는 실패한 명함만 삭제할 수 있습니다.')
         with store.connect() as db:
@@ -244,11 +340,11 @@ def reject(card_id: str):
                 (directory / f'{card["id"]}{extension}').unlink(missing_ok=True)
 
 
-@app.post('/api/samples/{sample_id}', status_code=201)
-def sample(sample_id: Literal['sample1', 'sample2'], ownerId: Literal['e1', 'e2', 'e3', 'e4', 'e5'] = 'e1'):
+@private.post('/api/samples/{sample_id}', status_code=201)
+def sample(sample_id: Literal['sample1', 'sample2'], user=Depends(require_user)):
     # Only fictional demo cards are exposed; private evaluation cards are never listed.
     saved = json.loads((BASE / 'demo' / 'out' / f'{sample_id}.json').read_text(encoding='utf-8'))
-    card = store.create(ownerId, 'saved-sample', 'auto', source='sample')
+    card = store.create(user['id'], 'saved-sample', 'auto', source='sample')
     with Image.open(BASE / 'demo' / f'{sample_id}.png') as image:
         image.convert('RGB').save(store.images / f'{card["id"]}.png')
     return store.update(card['id'], status='ready_for_review',
@@ -258,3 +354,6 @@ def sample(sample_id: Literal['sample1', 'sample2'], ownerId: Literal['e1', 'e2'
                         structured=saved['llm_structured_json'], warnings=saved['warnings'],
                         departmentPath=saved['llm_structured_json'].get('departments', []),
                         model=saved.get('model'), source='sample')
+
+
+app.include_router(private)
