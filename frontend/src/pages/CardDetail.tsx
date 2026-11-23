@@ -66,6 +66,7 @@ export default function CardDetail({ navigate, cardId, userId, isAdmin }: Props)
               <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Business Card</span>
             </div>
             <div className="p-5">
+              {!card.imageUrl && <p className="mb-3 text-sm text-slate-600">명함 정보가 등록되어 있습니다. 원본 사진은 아직 연결되지 않았습니다.</p>}
               {card.imageUrl ? <OriginalImage key={card.id} card={card} /> : <div
                 className="rounded-xl shadow-md overflow-hidden"
                 style={{ aspectRatio: '1.75', background: 'white', border: '1px solid #E2E8F0', padding: '20px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative' }}

@@ -66,7 +66,7 @@ export default function IncomingCards({ navigate }: {
         return <li key={card.id} className="flex items-center gap-3 p-3 sm:p-4">
           <button aria-label={`명함 상세: ${card.sourceFileName || name}`} onClick={() => navigate('card-detail', { cardId: card.id })} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left hover:bg-slate-50">
             <span className="flex h-12 w-20 shrink-0 items-center justify-center rounded bg-slate-100">
-              {card.imageUrl ? <img src={card.imageUrl} alt="" className="h-full w-full rounded object-contain" loading="lazy" /> : <span className="text-xs text-slate-600">명함</span>}
+              {card.imageUrl ? <img src={card.imageUrl} alt="" className="h-full w-full rounded object-contain" loading="lazy" /> : <span className="text-xs text-slate-600">사진 미등록</span>}
             </span>
             <span className="min-w-0"><span className="block truncate text-sm font-semibold">{name}</span>
               <span className="block truncate text-xs text-slate-600">{card.extracted.company.value || '회사 미확인'} · {formatDateTime(card.uploadedAt)}</span>
