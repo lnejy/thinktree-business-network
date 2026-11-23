@@ -1,6 +1,5 @@
 import io
 import json
-import re
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import Literal
@@ -11,7 +10,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field
 
 from accounts import Accounts, COOKIE, SESSION_SECONDS, card_owners, distribute_legacy_cards
-from card_service import BASE, FIELD_KEYS, Pipeline, Store, map_structured, now
+from card_service import BASE, FIELD_KEYS, Pipeline, Store, map_structured, now, review_error
 from evaluation_import import import_evaluation
 
 MAX_BYTES = 15 * 1024 * 1024
@@ -262,15 +261,9 @@ def review(card_id: str, body: Review, user=Depends(require_user)):
             raise HTTPException(422, '추출 필드 구성이 올바르지 않습니다.')
         extracted = {k: dict(value=v.value.strip(), confidence=v.confidence) for k, v in body.extracted.items()}
         if body.action == 'confirm' or card['status'] == 'reviewed':
-            if not extracted['name']['value'] or not extracted['company']['value']:
-                raise HTTPException(422, '확정하려면 회사명과 이름을 입력하세요.')
-            email = extracted['email']['value']
-            if email and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
-                raise HTTPException(422, '이메일 형식을 확인하세요.')
-            for key in ('phone', 'mobile', 'fax'):
-                value = extracted[key]['value']
-                if value and not 7 <= len(re.sub(r'\D', '', value)) <= 15:
-                    raise HTTPException(422, '전화번호 형식을 확인하세요.')
+            error = review_error(extracted)
+            if error:
+                raise HTTPException(422, error)
         status = 'reviewed' if body.action == 'confirm' or card['status'] == 'reviewed' else 'ready_for_review'
         changes = {}
         if 'effectiveDate' in body.model_fields_set:

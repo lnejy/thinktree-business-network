@@ -27,6 +27,19 @@ def empty_fields():
     return {key: {'value': '', 'confidence': 'low'} for key in FIELD_KEYS}
 
 
+def review_error(extracted):
+    if not extracted['name']['value'] or not extracted['company']['value']:
+        return '확정하려면 회사명과 이름을 입력하세요.'
+    email = extracted['email']['value']
+    if email and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+        return '이메일 형식을 확인하세요.'
+    for key in ('phone', 'mobile', 'fax'):
+        value = extracted[key]['value']
+        if value and not 7 <= len(re.sub(r'\D', '', value)) <= 15:
+            return '전화번호 형식을 확인하세요.'
+    return None
+
+
 class Store:
     def __init__(self, directory=DATA):
         self.directory = Path(directory)

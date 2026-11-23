@@ -53,11 +53,11 @@ def import_structured(store, source, image_roots=()):
             for path in root.rglob('*'):
                 if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS:
                     images.setdefault(image_key(path.name), []).append(path)
-    with store.lock:
-        with store.connect() as db:
-            db.execute('CREATE TABLE IF NOT EXISTS structured_imports (source_key TEXT PRIMARY KEY, card_id TEXT NOT NULL)')
-            imported = dict(db.execute('SELECT source_key,card_id FROM structured_imports'))
-        existing = store.all()
+    with store.lock, store.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        db.execute('CREATE TABLE IF NOT EXISTS structured_imports (source_key TEXT PRIMARY KEY, card_id TEXT NOT NULL)')
+        imported = dict(db.execute('SELECT source_key,card_id FROM structured_imports'))
+        existing = [json.loads(row[0]) for row in db.execute('SELECT body FROM cards ORDER BY rowid DESC')]
         existing_ids = {card['id'] for card in existing}
         by_source = {c.get('structuredImport', {}).get('key'): c for c in existing if c.get('structuredImport')}
         by_filename = {}
@@ -130,10 +130,9 @@ def import_structured(store, source, image_roots=()):
             report['created' if created else 'unchanged' if before == card else 'updated'] += 1
             planned.append(card)
             mappings.append((key, card['id']))
-        with store.connect() as db:
-            db.executemany('INSERT INTO cards VALUES (?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',
-                           [(c['id'], json.dumps(c, ensure_ascii=False)) for c in planned])
-            db.executemany('INSERT OR IGNORE INTO structured_imports VALUES (?,?)', mappings)
+        db.executemany('INSERT INTO cards VALUES (?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',
+                       [(c['id'], json.dumps(c, ensure_ascii=False)) for c in planned])
+        db.executemany('INSERT OR IGNORE INTO structured_imports VALUES (?,?)', mappings)
     return report
 
 
