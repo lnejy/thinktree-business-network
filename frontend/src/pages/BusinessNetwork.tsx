@@ -5,6 +5,7 @@ import { employees, contacts, companies, networkConnections, confirmedCards } fr
 import type { Contact } from '../data';
 import { affiliationChanges, cardDate, personHistory } from '../cardApi';
 import { AffiliationHistory } from '../components/AffiliationHistory';
+import { PendingCardsNotice } from '../components/PendingCardsNotice';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -54,6 +55,7 @@ export default function BusinessNetwork({ navigate, companyName }: Props) {
   return (
     <div className="flex h-full flex-col lg:flex-row">
       <div className="min-w-0 flex-1 p-4 space-y-4 overflow-auto sm:p-6">
+        <PendingCardsNotice navigate={navigate} />
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold" style={{ color: '#0F172A', letterSpacing: '-0.02em' }}>Business Network</h1>

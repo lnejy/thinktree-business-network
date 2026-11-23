@@ -18,7 +18,7 @@ COLORS = ('#2563EB', '#7C3AED', '#059669', '#D97706', '#0891B2')
 TEAM = (
     ('e1', 'jaeyeon', '원재연'),
     ('e2', 'beomchang', '고범창'),
-    ('e3', 'seungmin', '유승민'),
+    ('e3', 'seungmin', '양승민'),
     ('e4', 'haein', '이해인'),
     ('e5', 'hyejeong', '윤혜정'),
 )
@@ -89,6 +89,9 @@ class Accounts:
             """)
             db.execute('BEGIN IMMEDIATE')
             if db.execute("SELECT 1 FROM team_settings WHERE key='invite_hash'").fetchone():
+                db.execute("UPDATE users SET name=? WHERE id=? AND username=? AND name=?",
+                           ('양승민', 'e3', 'seungmin', '유승민'))
+                self.sync_bootstrap_name()
                 return
             if not self.bootstrap_path.exists():
                 access = dict(company=COMPANY, inviteCode=secrets.token_urlsafe(18),
@@ -108,6 +111,22 @@ class Accounts:
                 self.insert(db, user_id, username, name, passwords[username],
                             'admin' if index == 0 else 'user', COLORS[index])
             db.execute('INSERT INTO team_settings VALUES (?, ?)', ('invite_hash', digest(access['inviteCode'])))
+
+    def sync_bootstrap_name(self):
+        if not self.bootstrap_path.exists():
+            return
+        with self.bootstrap_path.open('r+', encoding='utf-8') as file:
+            access = json.load(file)
+            changed = False
+            for account in access.get('accounts', []):
+                if account.get('username') == 'seungmin' and account.get('name') == '유승민':
+                    account['name'] = '양승민'
+                    changed = True
+            if changed:
+                file.seek(0)
+                json.dump(access, file, ensure_ascii=False, indent=2)
+                file.write('\n')
+                file.truncate()
 
     @staticmethod
     def insert(db, user_id, username, name, password, role, color):

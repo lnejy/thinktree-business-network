@@ -2,7 +2,7 @@ import { companyTree, currentAffiliations } from '../cardApi';
 import React, { useState } from 'react';
 import { PageName, Badge, Btn } from '../Layout';
 import { IconBuilding, IconUser, IconCard, IconArrowRight, IconMapPin, IconGlobe, IconPhone, IconMail, IconX } from '../icons';
-import { companies, contacts, employees, samsungOrgChart } from '../data';
+import { companies, contacts, employees } from '../data';
 import type { OrgNode } from '../data';
 
 interface Props {
@@ -12,10 +12,14 @@ interface Props {
 
 export default function CompanyDetail({ navigate, companyId }: Props) {
   const [tab, setTab] = useState<'overview' | 'org' | 'contacts' | 'network'>('overview');
-  const [selectedNode, setSelectedNode] = useState<OrgNode | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [asOf, setAsOf] = useState('');
 
-  const company = companies.find(c => c.id === companyId) || companies[0];
+  const company = companies.find(c => c.id === companyId);
+  if (!company) return <p className="p-6 text-sm text-slate-600">회사를 찾을 수 없습니다. 명함을 확정한 뒤 회사 목록에서 다시 선택하세요.</p>;
+  const tree = companyTree(company.id, asOf || undefined);
+  const findNode = (node: OrgNode): OrgNode | undefined => node.id === selectedNodeId ? node : node.children?.map(findNode).find(Boolean);
+  const selectedNode = findNode(tree);
   const companyContacts = contacts.filter(c => c.companyId === company.id);
 
   return (
@@ -138,14 +142,14 @@ export default function CompanyDetail({ navigate, companyId }: Props) {
                 <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Click any node to view details · Auto-built from business cards</p>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-xs">조회 기준일 <input type="date" value={asOf} onChange={event => { setAsOf(event.target.value); setSelectedNode(null); }} className="border rounded px-2 py-1" /></label>
+                <label className="text-xs">조회 기준일 <input type="date" value={asOf} onChange={event => { setAsOf(event.target.value); setSelectedNodeId(null); }} className="border rounded px-2 py-1" /></label>
                 <Badge variant="muted">{currentAffiliations(asOf || undefined).filter(card => card.companyId === company.id).length}명</Badge>
               </div>
             </div>
             <div className="p-8 overflow-x-auto">
               <div className="min-w-max">
                 {asOf && <p className="text-xs text-slate-600 mb-3">{asOf}까지의 가장 최근 명함 기록을 기준으로 표시합니다.</p>}
-                <OrgTree node={companyTree(company.id, asOf || undefined)} onSelect={setSelectedNode} selectedId={selectedNode?.id} />
+                <OrgTree node={tree} onSelect={node => setSelectedNodeId(node.id)} selectedId={selectedNode?.id} />
               </div>
             </div>
           </div>
@@ -217,7 +221,7 @@ export default function CompanyDetail({ navigate, companyId }: Props) {
 
       {/* Detail panel */}
       {selectedNode && tab === 'org' && (
-        <NodeDetailPanel node={selectedNode} asOf={asOf || undefined} onClose={() => setSelectedNode(null)} navigate={navigate} />
+        <NodeDetailPanel node={selectedNode} asOf={asOf || undefined} onClose={() => setSelectedNodeId(null)} navigate={navigate} />
       )}
     </div>
   );

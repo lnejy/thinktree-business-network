@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PageName, Badge, Btn } from '../Layout';
 import { companies } from '../data';
+import { PendingCardsNotice } from '../components/PendingCardsNotice';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -9,12 +10,13 @@ interface Props {
 export default function OrgChart({ navigate }: Props) {
   return (
     <div className="p-6 space-y-5">
+      <PendingCardsNotice navigate={navigate} />
       <div>
         <h1 className="text-xl font-bold" style={{ color: '#0F172A', letterSpacing: '-0.02em' }}>Organization Charts</h1>
         <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>Select a company to view its organization chart</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {companies.map(company => (
           <button
             key={company.id}
