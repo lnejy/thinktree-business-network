@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { PageName, Badge, Btn } from '../Layout';
 import { IconSearch, IconFilter, IconBuilding, IconUser, IconCard, IconArrowRight, IconAlertTriangle } from '../icons';
 import { companies } from '../data';
+import { PendingCardsNotice } from '../components/PendingCardsNotice';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -34,6 +35,7 @@ export default function Companies({ navigate }: Props) {
 
   return (
     <div className="p-6 space-y-5">
+      <PendingCardsNotice navigate={navigate} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: '#0F172A', letterSpacing: '-0.02em' }}>Companies</h1>

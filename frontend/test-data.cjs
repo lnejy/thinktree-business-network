@@ -14,8 +14,10 @@ try {
   const api = require(path.join(dir, 'cardApi.cjs'));
   const originalCount = data.companies.length;
   function card(id, department, company = '테스트 회사', domain = 'example.test') {
-    const c = structuredClone(data.incomingCards[0]);
-    Object.assign(c, { id, status: 'reviewed', ownerId: 'e1', uploadedAt: `2026-11-02T00:00:0${id}Z` });
+    const keys = ['company', 'name', 'nameEn', 'branch', 'department', 'team', 'position',
+      'phone', 'mobile', 'email', 'address', 'website', 'fax', 'postalCode', 'address2'];
+    const c = { extracted: Object.fromEntries(keys.map(key => [key, { value: '', confidence: 'high' }])) };
+    Object.assign(c, { id, status: 'reviewed', ownerId: 'e1', uploadedAt: `2026-11-02T00:00:${id.padStart(2, '0')}Z` });
     for (const field of Object.values(c.extracted)) field.value = '';
     const fields = { company, name: `담당자${id}`, email: `person${id}@${domain}`, branch: '서울 본사', department, team: '개발 1팀' };
     for (const [key, value] of Object.entries(fields)) c.extracted[key].value = value;
@@ -85,6 +87,30 @@ try {
   old.personLink = 'separate';
   api.hydrateCards([recent, old, peer, namesake]);
   assert.notEqual(recent.contactId, old.contactId, 'separated reference does not attract automatic links');
+  const shared = card('12', '영업부');
+  shared.ownerIds = ['e1', 'e3'];
+  const pending = card('13', '검토부');
+  pending.status = 'ready_for_review';
+  api.hydrateCards([shared, pending]);
+  assert.deepEqual(data.incomingCards.map(item => item.id), [pending.id]);
+  assert.deepEqual(data.confirmedCards.map(item => item.id), [shared.id]);
+  assert.equal(data.companies.length, 1);
+  assert.equal(data.companies[0].cardCount, 1);
+  assert.equal(data.companies[0].contactCount, 1);
+  assert.equal(data.companies[0].connectedEmployeeCount, 2);
+  assert.deepEqual(data.contacts[0].ownerIds, ['e1', 'e3']);
+  assert.equal(data.networkConnections.length, 2);
+  assert.equal(api.companyTree(shared.companyId).children[0].children[0].children[0].children[0].name, shared.extracted.name.value);
+  pending.status = 'reviewed';
+  api.hydrateCards([shared, pending]);
+  assert.equal(data.incomingCards.length, 0);
+  assert.equal(data.confirmedCards.length, 2);
+  assert.equal(data.companies[0].cardCount, 2);
+  assert.equal(data.contacts.length, 2);
+  assert.equal(api.companyTree(shared.companyId).children[0].children.length, 2);
+  api.hydrateCards([pending]);
+  assert.equal(data.contacts.length, 1, 'removed records disappear from all derived views');
+  assert.equal(data.networkConnections.length, 1);
   api.hydrateCards([]);
   assert.equal(data.companies.length, originalCount);
   console.log('PASS: identity evidence, domain conflicts, free mail isolation, parent-scoped teams, full department paths, contacts, network, idempotent refresh');

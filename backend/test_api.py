@@ -48,6 +48,24 @@ class CardApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         return response.json()
 
+    def test_existing_account_name_migration_preserves_login_and_cards(self):
+        accounts = Accounts(self.store)
+        with self.store.connect() as db:
+            db.execute("UPDATE users SET name='유승민' WHERE id='e3'")
+            before = db.execute("SELECT username,password_hash,salt FROM users WHERE id='e3'").fetchone()
+        access = json.loads(accounts.bootstrap_path.read_text(encoding='utf-8'))
+        next(item for item in access['accounts'] if item['username'] == 'seungmin')['name'] = '유승민'
+        accounts.bootstrap_path.write_text(json.dumps(access, ensure_ascii=False), encoding='utf-8')
+        card = self.store.create('e3', 'local', 'auto')
+        accounts.initialize()
+        accounts.initialize()
+        self.assertEqual(self.login('seungmin')['user']['name'], '양승민')
+        with self.store.connect() as db:
+            self.assertEqual(db.execute("SELECT username,password_hash,salt FROM users WHERE id='e3'").fetchone(), before)
+        after = json.loads(accounts.bootstrap_path.read_text(encoding='utf-8'))
+        self.assertEqual(next(item for item in after['accounts'] if item['username'] == 'seungmin')['name'], '양승민')
+        self.assertEqual(self.store.get(card['id']), card)
+
     def test_sample_draft_confirm_and_persistence(self):
         card = self.sample()
         self.assertEqual(card['source'], 'sample')

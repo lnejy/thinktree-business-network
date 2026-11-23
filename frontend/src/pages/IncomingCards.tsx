@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import type { PageName } from '../Layout';
 import { IconSearch } from '../icons';
-import { incomingCards, formatDateTime } from '../data';
+import { incomingCards, confirmedCards, formatDateTime } from '../data';
 import { isLiveCard, refreshCards, request, type LiveCard } from '../cardApi';
 
 const filters = [
   ['ready_for_review', '확인 필요'],
   ['processing', '읽는 중'],
   ['failed', '다시 시도'],
+  ['reviewed', '저장 완료'],
   ['all', '전체'],
 ] as const;
 
@@ -22,7 +23,8 @@ export default function IncomingCards({ navigate }: {
   const [filter, setFilter] = useState<(typeof filters)[number][0]>('ready_for_review');
   const [retrying, setRetrying] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const cards = incomingCards.filter(card => isLiveCard(card.id)) as LiveCard[];
+  const cards = [...incomingCards, ...confirmedCards].filter(card => isLiveCard(card.id))
+    .sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt)) as LiveCard[];
   const query = search.trim().toLowerCase();
   const shown = cards.filter(card =>
     (filter === 'all' || statusGroup(card) === filter) &&
@@ -64,7 +66,7 @@ export default function IncomingCards({ navigate }: {
         return <li key={card.id} className="flex items-center gap-3 p-3 sm:p-4">
           <button aria-label={`명함 상세: ${card.sourceFileName || name}`} onClick={() => navigate('card-detail', { cardId: card.id })} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left hover:bg-slate-50">
             <span className="flex h-12 w-20 shrink-0 items-center justify-center rounded bg-slate-100">
-              {card.imageUrl ? <img src={card.imageUrl} alt="" className="h-full w-full rounded object-contain" loading="lazy" /> : <span className="text-xs text-slate-600">명함</span>}
+              {card.imageUrl ? <img src={card.imageUrl} alt="" className="h-full w-full rounded object-contain" loading="lazy" /> : <span className="text-xs text-slate-600">사진 미등록</span>}
             </span>
             <span className="min-w-0"><span className="block truncate text-sm font-semibold">{name}</span>
               <span className="block truncate text-xs text-slate-600">{card.extracted.company.value || '회사 미확인'} · {formatDateTime(card.uploadedAt)}</span>
@@ -73,6 +75,7 @@ export default function IncomingCards({ navigate }: {
           {status === 'ready_for_review' && isLiveCard(card.id) && <button onClick={() => navigate('ai-recognition', { cardId: card.id })} className="shrink-0 rounded-lg border border-blue-200 px-3 py-2 text-sm text-blue-800">검토</button>}
           {status === 'failed' && isLiveCard(card.id) && <button disabled={retrying !== null} onClick={() => retry(card.id)} className="shrink-0 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 disabled:opacity-50">{retrying === card.id ? '요청 중…' : '다시 시도'}</button>}
           {status === 'processing' && <span className="shrink-0 text-xs text-blue-700">읽는 중…</span>}
+          {status === 'reviewed' && <span className="shrink-0 text-xs text-emerald-700">저장 완료</span>}
         </li>;
       })}</ul> : <p className="p-8 text-center text-sm text-slate-600">{query ? '검색 결과가 없습니다.' : filter === 'ready_for_review' ? '확인할 명함이 없습니다.' : '해당 상태의 명함이 없습니다.'}</p>}
     </section>

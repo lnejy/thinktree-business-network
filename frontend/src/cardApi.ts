@@ -10,9 +10,9 @@ export interface LiveCard extends BusinessCard {
   personReasons?: string[]; companyReasons?: string[];
 
 }
-const originals = structuredClone({ incomingCards, confirmedCards, companies, contacts, networkConnections });
 let current: LiveCard[] = [];
 let sessionGeneration = 0;
+let refreshSequence = 0;
 let revision = 0;
 const listeners = new Set<() => void>();
 export const subscribeCards = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
@@ -205,11 +205,11 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 function replace<T>(target: T[], values: T[]) { target.splice(0, target.length, ...values); }
 export function hydrateCards(cards: LiveCard[]) {
   current = cards;
-  replace(incomingCards, [...cards.filter(c => c.status !== 'reviewed'), ...structuredClone(originals.incomingCards)]);
-  replace(confirmedCards, [...cards.filter(c => c.status === 'reviewed'), ...structuredClone(originals.confirmedCards)]);
-  replace(companies, structuredClone(originals.companies));
-  replace(contacts, structuredClone(originals.contacts));
-  replace(networkConnections, structuredClone(originals.networkConnections));
+  replace(incomingCards, cards.filter(c => c.status !== 'reviewed'));
+  replace(confirmedCards, cards.filter(c => c.status === 'reviewed'));
+  replace(companies, []);
+  replace(contacts, []);
+  replace(networkConnections, []);
   const actual = cards.filter(c => c.status === 'reviewed')
     .sort((a, b) => a.uploadedAt.localeCompare(b.uploadedAt) || a.id.localeCompare(b.id));
   assignLinks(actual, 'company');
@@ -244,7 +244,8 @@ export function hydrateCards(cards: LiveCard[]) {
     companies.push({
       id, name: x.company.value, nameEn: x.company.value, domain: domain(latest), address: x.address.value,
       industry: '', contactCount: people.length, cardCount: history.length,
-      departmentCount: new Set(people.filter(c => c.department || c.team).map(c => JSON.stringify([c.department, c.team]))).size,
+      departmentCount: new Set(currentAffiliations().filter(c => c.companyId === id && (c.extracted.department.value || c.extracted.team.value))
+        .map(c => JSON.stringify([c.extracted.branch.value, c.extracted.department.value, c.extracted.team.value]))).size,
       connectedEmployeeCount: new Set(people.flatMap(c => c.ownerIds)).size,
     });
   }
@@ -256,8 +257,9 @@ export function resetCards() {
 }
 export async function refreshCards(signal?: AbortSignal) {
   const generation = sessionGeneration;
+  const sequence = ++refreshSequence;
   const cards = await request<LiveCard[]>('/api/cards', { signal });
-  if (generation === sessionGeneration && !signal?.aborted) hydrateCards(cards);
+  if (generation === sessionGeneration && sequence === refreshSequence && !signal?.aborted) hydrateCards(cards);
   return cards;
 }
 export type ReviewOptions = Pick<LiveCard, 'effectiveDate' | 'personLink' | 'companyLink'>;

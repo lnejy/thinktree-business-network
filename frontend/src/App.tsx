@@ -73,6 +73,7 @@ export default function App() {
           return;
         }
         employees.splice(0, employees.length, ...session.employees);
+        setUser(session.user);
         await refreshCards(signal);
         if (!signal.aborted) setConnectionError('');
       } catch (error) {
@@ -124,7 +125,7 @@ export default function App() {
       case 'companies':
         return <Companies navigate={navigate} />;
       case 'company-detail':
-        return <CompanyDetail navigate={navigate} companyId={params.companyId} />;
+        return <CompanyDetail key={params.companyId} navigate={navigate} companyId={params.companyId} />;
       case 'org-chart':
         return <OrgChart navigate={navigate} />;
       case 'business-network':
