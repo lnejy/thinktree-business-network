@@ -1,5 +1,4 @@
 import {
-  affiliationChanges,
   cardDate,
   linkCandidates,
   needsLinkChoice,
@@ -7,6 +6,7 @@ import {
   type LiveCard,
   type ReviewOptions,
 } from "../cardApi"
+import { CardComparison } from './CardComparison'
 
 export function LinkReview({
   card,
@@ -98,18 +98,9 @@ export function LinkReview({
                 기존 명함에 연결할지, 별도로 등록할지 선택하세요.
               </p>
             )}
-            {kind === "person" && evidence && (
-              <div className="text-xs text-slate-600">
-                {affiliationChanges(card, evidence.card)
-                  .slice(0, 4)
-                  .map((change) => (
-                    <p key={change.label}>
-                      {change.label} {change.from || "미입력"} →{" "}
-                      {change.to || "미입력"}
-                    </p>
-                  ))}
-              </div>
-            )}
+            {kind === 'person' && evidence && <CardComparison incoming={card} existing={evidence.card}
+              selected={options.personLink} onLink={() => onChange({ ...options, personLink: evidence.card.id })}
+              onSeparate={() => onChange({ ...options, personLink: 'separate' })} />}
           </div>
         )
       })}
