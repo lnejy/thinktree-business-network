@@ -1,342 +1,74 @@
-import React, { useState } from 'react';
-import { PageName, Badge, Btn } from '../Layout';
-import { IconX, IconUser, IconBuilding, IconCard, IconPhone, IconMail, IconFilter } from '../icons';
-import { employees, contacts, companies, networkConnections, confirmedCards } from '../data';
-import type { Contact } from '../data';
-import { affiliationChanges, cardDate, personHistory } from '../cardApi';
-import { AffiliationHistory } from '../components/AffiliationHistory';
+import { useState } from 'react';
+import type { PageName } from '../Layout';
+import { companies, contacts, employees } from '../data';
 import { PendingCardsNotice } from '../components/PendingCardsNotice';
+import { ContactPanel } from '../components/ContactPanel';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
   companyName: string;
+  userId: string;
+  companyId?: string;
 }
 
-export default function BusinessNetwork({ navigate, companyName }: Props) {
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
-  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
-  const [filterCompany, setFilterCompany] = useState('all');
-  const selectedEmployee = employees.find(employee => employee.id === selectedEmployeeId);
-  const selectedContact = contacts.find(contact => contact.id === selectedContactId);
+export default function BusinessNetwork({ navigate, companyName, userId, companyId }: Props) {
+  const [search, setSearch] = useState('');
+  const [scope, setScope] = useState('all');
+  const [employeeId, setEmployeeId] = useState('');
+  const [companyFilter, setCompanyFilter] = useState(companyId || '');
+  const [contactId, setContactId] = useState<string | null>(null);
+  const selected = contacts.find(contact => contact.id === contactId);
+  const query = search.trim().toLocaleLowerCase();
+  const shown = contacts.filter(contact => {
+    const company = companies.find(item => item.id === contact.companyId);
+    const searchable = [company?.name, contact.name, contact.nameEn, contact.department, contact.team, contact.email].join(' ').toLocaleLowerCase();
+    return (!query || searchable.includes(query)) && (!companyFilter || contact.companyId === companyFilter)
+      && (!employeeId || contact.ownerIds.includes(employeeId))
+      && (scope === 'all' || contact.ownerIds.includes(userId))
+      && (scope !== 'shared' || contact.ownerIds.length > 1);
+  });
+  const groups = companies.map(company => ({ company, people: shown.filter(contact => contact.companyId === company.id) }))
+    .filter(group => group.people.length).sort((a, b) => a.company.name.localeCompare(b.company.name, 'ko'));
 
-  const filteredContacts = filterCompany === 'all'
-    ? contacts
-    : contacts.filter(c => c.companyId === filterCompany);
-  const changes = filteredContacts.flatMap(contact => {
-    const [latest, earlier] = personHistory(contact.id);
-    if (!latest || !earlier) return [];
-    const changed = affiliationChanges(latest, earlier).filter(change => ['회사명', '부서', '팀', '직책', '본사·지점'].includes(change.label));
-    return changed.length ? [{ card: latest, changed }] : [];
-  }).sort((a, b) => cardDate(b.card).localeCompare(cardDate(a.card))).slice(0, 10);
-
-  const activeConnectionsForEmp = (empId: string) =>
-    networkConnections.filter(n => n.employeeId === empId && filteredContacts.some(c => c.id === n.contactId));
-
-  const activeConnectionsForContact = (contactId: string) =>
-    networkConnections.filter(n => n.contactId === contactId);
-
-  const isConnected = (empId: string, contactId: string) =>
-    networkConnections.some(n => n.employeeId === empId && n.contactId === contactId);
-
-  const highlightEmp = selectedContact
-    ? employees.filter(e => activeConnectionsForContact(selectedContact.id).some(n => n.employeeId === e.id))
-    : selectedEmployee ? [selectedEmployee] : [];
-
-  const highlightContact = selectedEmployee
-    ? filteredContacts.filter(c => activeConnectionsForEmp(selectedEmployee.id).some(n => n.contactId === c.id))
-    : selectedContact ? [selectedContact] : [];
-
-  const detail = selectedEmployee || selectedContact;
-
-  const getCompanyForContact = (contact: Contact) => companies.find(c => c.id === contact.companyId);
-  const getOwnersForContact = (contact: Contact) =>
-    employees.filter(e => contact.ownerIds.includes(e.id));
-
-  return (
-    <div className="flex h-full flex-col lg:flex-row">
-      <div className="min-w-0 flex-1 p-4 space-y-4 overflow-auto sm:p-6">
-        <PendingCardsNotice navigate={navigate} />
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold" style={{ color: '#0F172A', letterSpacing: '-0.02em' }}>Business Network</h1>
-            <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>Connections between our team and client contacts</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={filterCompany}
-              onChange={e => setFilterCompany(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-xs outline-none"
-              style={{ borderColor: '#E2E8F0', color: '#374151' }}
-            >
-              <option value="all">All Companies</option>
-              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <Badge variant="muted">{networkConnections.length} connections</Badge>
-          </div>
+  return <div className="flex min-w-0 flex-col xl:flex-row">
+    <div className="min-w-0 flex-1 space-y-5 p-4 md:p-6">
+      <header><h1 className="text-xl font-bold">Business Network</h1><p className="mt-1 text-sm text-slate-600">회사를 펼쳐 부서와 인물, 연결된 {companyName} 팀원을 확인하세요.</p></header>
+      <PendingCardsNotice navigate={navigate} />
+      <section aria-label="네트워크 필터" className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+        <input aria-label="네트워크 검색" value={search} onChange={event => setSearch(event.target.value)} placeholder="회사·이름·부서·이메일 검색" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <div className="flex flex-wrap gap-2">
+          {[['all', '팀 전체'], ['mine', '내 명함'], ['shared', '함께 아는 사람']].map(([value, label]) => <button key={value} aria-pressed={scope === value} onClick={() => setScope(value)} className={`rounded-lg px-3 py-2 text-sm ${scope === value ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700'}`}>{label}</button>)}
+          <select aria-label="네트워크 회사" value={companyFilter} onChange={event => setCompanyFilter(event.target.value)} className="min-w-0 max-w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <option value="">모든 회사</option>{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}
+          </select>
+          <button onClick={() => { setSearch(''); setScope('all'); setEmployeeId(''); setCompanyFilter(''); }} className="rounded-lg px-3 py-2 text-sm text-blue-700">필터 초기화</button>
         </div>
-
-        {changes.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-4"><h2 className="font-semibold text-sm">최근 소속·직책 변경</h2><ul className="mt-2 space-y-2 text-xs">{changes.map(({ card, changed }) => <li key={card.id}><button onClick={() => navigate('card-detail', { cardId: card.id })} className="text-blue-700">{cardDate(card)} · {card.extracted.name.value}</button> · {changed.map(change => `${change.label} ${change.from || '미입력'} → ${change.to || '미입력'}`).join(' · ')}</li>)}</ul></section>}
-        {/* Network legend */}
-        <div className="flex items-center gap-4 px-4 py-2.5 rounded-lg text-xs" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-          <span style={{ color: '#64748B' }}>Legend:</span>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full" style={{ background: '#2563EB' }} />
-            <span style={{ color: '#374151' }}>Our Employees</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full" style={{ background: '#7C3AED' }} />
-            <span style={{ color: '#374151' }}>Client Contacts</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-6 h-0.5" style={{ background: '#CBD5E1' }} />
-            <span style={{ color: '#374151' }}>Owns business card</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-6 h-0.5" style={{ background: '#2563EB', borderTop: '2px solid #2563EB' }} />
-            <span style={{ color: '#374151' }}>Active selection</span>
-          </div>
-          <span className="ml-auto text-xs" style={{ color: '#94A3B8' }}>Click any node to explore connections</span>
+        <div className="flex flex-wrap gap-2" aria-label="연결 팀원">
+          <button aria-pressed={!employeeId} onClick={() => setEmployeeId('')} className="rounded-full border px-3 py-1.5 text-sm">전체 팀원</button>
+          {employees.map(employee => <button key={employee.id} aria-pressed={employeeId === employee.id} onClick={() => setEmployeeId(employeeId === employee.id ? '' : employee.id)} className={`network-node-employee rounded-full border px-3 py-1.5 text-sm ${employeeId === employee.id ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-slate-200'}`}>{employee.name}</button>)}
         </div>
-
-        {/* Bipartite network graph */}
-        <div className="bg-white rounded-xl border overflow-x-auto" style={{ borderColor: '#E2E8F0' }}>
-          <div className="flex min-w-[720px]" style={{ minHeight: '480px' }}>
-            {/* Left: Employees */}
-            <div className="w-64 border-r flex flex-col" style={{ borderColor: '#F1F5F9' }}>
-              <div className="px-4 py-3 border-b" style={{ borderColor: '#F1F5F9', background: '#FAFAFA' }}>
-                <div className="text-xs font-semibold" style={{ color: '#374151' }}>{companyName} 팀</div>
-                <div className="text-xs" style={{ color: '#64748B' }}>팀원 {employees.length}명</div>
-              </div>
-              <div className="flex-1 p-3 space-y-2">
-                {employees.map(emp => {
-                  const connCount = activeConnectionsForEmp(emp.id).length;
-                  const isHighlighted = highlightEmp.some(e => e.id === emp.id);
-                  const isSelected = selectedEmployee?.id === emp.id;
-                  const isDimmed = (selectedEmployee || selectedContact) && !isHighlighted;
-
-                  return (
-                    <button
-                      key={emp.id}
-                      onClick={() => {
-                        setSelectedContactId(null);
-                        setSelectedEmployeeId(isSelected ? null : emp.id);
-                      }}
-                      className="network-node-employee flex items-center gap-2.5 w-full p-2.5 rounded-lg text-left border transition-all"
-                      style={{
-                        borderColor: isSelected ? '#2563EB' : isHighlighted ? '#BFDBFE' : '#F1F5F9',
-                        background: isSelected ? '#EFF6FF' : isHighlighted ? '#F0F4FF' : 'white',
-                        opacity: isDimmed ? 0.3 : 1,
-                      }}
-                    >
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0" style={{ background: emp.avatarColor }}>
-                        {emp.name.slice(0, 1)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium truncate" style={{ color: '#0F172A' }}>{emp.name}</div>
-                        {emp.position && <div className="text-xs truncate" style={{ color: '#94A3B8' }}>{emp.position}</div>}
-                      </div>
-                      <div className="text-xs font-bold shrink-0" style={{ color: isSelected ? '#2563EB' : '#94A3B8', fontFamily: 'DM Mono, monospace' }}>
-                        {connCount}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+      </section>
+      <p role="status" className="text-sm text-slate-600">회사 {groups.length}개 · 인물 {shown.length}명{scope === 'shared' && ' · 나와 다른 팀원이 함께 연결된 인물'}</p>
+      <div className="space-y-3">
+        {groups.map(({ company, people }) => {
+          const owners = employees.filter(employee => people.some(person => person.ownerIds.includes(employee.id)));
+          const departments = [...new Set(people.map(person => [person.department, person.team].filter(Boolean).join(' / ') || '부서 미확인'))];
+          return <details key={company.id} open={query || employeeId ? true : undefined} className="network-company overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <summary className="cursor-pointer p-4 marker:text-blue-600"><span className="font-semibold">{company.name}</span><span className="ml-3 text-sm text-slate-600">{people.length}명</span><span className="mt-1 block text-xs text-slate-500">연결 팀원 · {owners.map(owner => owner.name).join(', ')}</span></summary>
+            <div className="space-y-4 border-t border-slate-100 p-4">
+              <button className="text-sm font-medium text-blue-700" onClick={() => navigate('company-detail', { companyId: company.id })}>회사 상세 보기</button>
+              {departments.map(department => <section key={department} className="space-y-2"><h2 className="text-sm font-semibold text-slate-600">{department}</h2>
+                <div className="grid gap-2 md:grid-cols-2">{people.filter(person => ([person.department, person.team].filter(Boolean).join(' / ') || '부서 미확인') === department).map(person => <button key={person.id} onClick={() => setContactId(person.id)} aria-pressed={person.id === contactId} className={`network-node-contact rounded-lg border p-3 text-left ${person.id === contactId ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                  <span className="block text-sm font-semibold">{person.name}<span className="ml-2 font-normal text-slate-500">{person.position}</span></span>
+                  <span className="mt-1 block text-xs text-slate-600">{employees.filter(employee => person.ownerIds.includes(employee.id)).map(employee => employee.name).join(' · ')}</span>
+                </button>)}</div>
+              </section>)}
             </div>
-
-            {/* Center: Connection visualization */}
-            <div className="flex-1 relative" style={{ minWidth: '200px' }}>
-              <svg width="100%" height="100%" className="absolute inset-0">
-                <defs>
-                  <marker id="arrowhead" markerWidth="6" markerHeight="4" refX="3" refY="2" orient="auto">
-                    <polygon points="0 0, 6 2, 0 4" fill="#CBD5E1" />
-                  </marker>
-                  <marker id="arrowhead-active" markerWidth="6" markerHeight="4" refX="3" refY="2" orient="auto">
-                    <polygon points="0 0, 6 2, 0 4" fill="#2563EB" />
-                  </marker>
-                </defs>
-                {employees.map((emp, ei) => {
-                  const empY = 60 + ei * 68;
-                  return filteredContacts.map((contact, ci) => {
-                    if (!isConnected(emp.id, contact.id)) return null;
-                    const contactY = 60 + ci * 68;
-                    const isActive = (selectedEmployee?.id === emp.id || selectedContact?.id === contact.id);
-
-                    return (
-                      <line
-                        key={`${emp.id}-${contact.id}`}
-                        x1="10%"
-                        y1={empY}
-                        x2="90%"
-                        y2={contactY}
-                        stroke={isActive ? '#2563EB' : '#E2E8F0'}
-                        strokeWidth={isActive ? 2 : 1}
-                        strokeDasharray={isActive ? undefined : '4,2'}
-                        opacity={isActive ? 1 : 0.6}
-                      />
-                    );
-                  });
-                })}
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="text-center">
-                  <div className="text-3xl font-bold" style={{ color: '#F1F5F9', fontFamily: 'DM Mono, monospace' }}>
-                    {networkConnections.length}
-                  </div>
-                  <div className="text-xs mt-0.5" style={{ color: '#CBD5E1' }}>connections</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Client Contacts */}
-            <div className="w-72 border-l flex flex-col" style={{ borderColor: '#F1F5F9' }}>
-              <div className="px-4 py-3 border-b" style={{ borderColor: '#F1F5F9', background: '#FAFAFA' }}>
-                <div className="text-xs font-semibold" style={{ color: '#374151' }}>Client Contacts</div>
-                <div className="text-xs" style={{ color: '#94A3B8' }}>{filteredContacts.length} contacts</div>
-              </div>
-              <div className="flex-1 p-3 space-y-2 overflow-y-auto">
-                {filteredContacts.map((contact) => {
-                  const companyData = getCompanyForContact(contact);
-                  const ownerCount = activeConnectionsForContact(contact.id).length;
-                  const isHighlighted = highlightContact.some(c => c.id === contact.id);
-                  const isSelected = selectedContact?.id === contact.id;
-                  const isDimmed = (selectedEmployee || selectedContact) && !isHighlighted;
-
-                  return (
-                    <button
-                      key={contact.id}
-                      onClick={() => {
-                        setSelectedEmployeeId(null);
-                        setSelectedContactId(isSelected ? null : contact.id);
-                      }}
-                      className="network-node-contact flex items-center gap-2.5 w-full p-2.5 rounded-lg text-left border transition-all"
-                      style={{
-                        borderColor: isSelected ? '#7C3AED' : isHighlighted ? '#DDD6FE' : '#F1F5F9',
-                        background: isSelected ? '#F5F3FF' : isHighlighted ? '#FAF8FF' : 'white',
-                        opacity: isDimmed ? 0.3 : 1,
-                      }}
-                    >
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: '#F5F3FF', color: '#7C3AED' }}>
-                        {contact.name.slice(0, 1)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium truncate" style={{ color: '#0F172A' }}>{contact.name}</div>
-                        <div className="text-xs truncate" style={{ color: '#94A3B8' }}>{companyData?.name} · {contact.position}</div>
-                      </div>
-                      <div className="text-xs font-bold shrink-0" style={{ color: isSelected ? '#7C3AED' : '#94A3B8', fontFamily: 'DM Mono, monospace' }}>
-                        {ownerCount}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
+          </details>;
+        })}
+        {!groups.length && <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">조건에 맞는 연결이 없습니다. 검색어나 필터를 바꿔 주세요.</p>}
       </div>
-
-      {/* Detail panel */}
-      {detail && (
-        <div className="w-full bg-white border-l shrink-0 overflow-y-auto lg:w-72" style={{ borderColor: '#E2E8F0' }}>
-          <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white" style={{ borderColor: '#F1F5F9' }}>
-            <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>
-              {selectedEmployee ? 'Employee' : 'Contact'} Detail
-            </span>
-            <button aria-label="상세 정보 닫기" onClick={() => { setSelectedEmployeeId(null); setSelectedContactId(null); }} className="p-1 rounded hover:bg-gray-100">
-              <IconX size={14} style={{ color: '#94A3B8' }} />
-            </button>
-          </div>
-
-          <div className="p-4 space-y-4">
-            {selectedEmployee && (
-              <>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold text-white shrink-0" style={{ background: selectedEmployee.avatarColor }}>
-                    {selectedEmployee.name.slice(0, 1)}
-                  </div>
-                  <div>
-                    <div className="font-semibold" style={{ color: '#0F172A' }}>{selectedEmployee.name}</div>
-                    <div className="text-xs mt-0.5" style={{ color: '#64748B' }}>{selectedEmployee.company}</div>
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: '12px' }}>
-                  <div className="text-xs font-semibold mb-2" style={{ color: '#374151' }}>
-                    Holds {activeConnectionsForEmp(selectedEmployee.id).length} client cards
-                  </div>
-                  <div className="space-y-2">
-                    {contacts
-                      .filter(c => networkConnections.some(n => n.employeeId === selectedEmployee.id && n.contactId === c.id))
-                      .map(contact => {
-                        const co = companies.find(c2 => c2.id === contact.companyId);
-                        return (
-                          <button
-                            key={contact.id}
-                            onClick={() => { setSelectedEmployeeId(null); setSelectedContactId(contact.id); }}
-                            className="w-full flex items-center gap-2 p-2 rounded-lg text-left hover:bg-gray-50 transition-colors"
-                          >
-                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: '#F5F3FF', color: '#7C3AED' }}>
-                              {contact.name.slice(0, 1)}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-xs font-medium truncate" style={{ color: '#0F172A' }}>{contact.name}</div>
-                              <div className="text-xs truncate" style={{ color: '#94A3B8' }}>{co?.name}</div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {selectedContact && (
-              <>
-                <AffiliationHistory personId={selectedContact.id} navigate={navigate} />
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold shrink-0" style={{ background: '#F5F3FF', color: '#7C3AED' }}>
-                    {selectedContact.name.slice(0, 1)}
-                  </div>
-                  <div>
-                    <div className="font-semibold" style={{ color: '#0F172A' }}>{selectedContact.name}</div>
-                    <div className="text-xs" style={{ color: '#94A3B8' }}>{selectedContact.nameEn}</div>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5 text-xs" style={{ color: '#475569' }}>
-                  <div className="flex items-center gap-2"><IconBuilding size={12} style={{ color: '#94A3B8' }} />{companies.find(c => c.id === selectedContact.companyId)?.name}</div>
-                  <div className="flex items-center gap-2"><IconUser size={12} style={{ color: '#94A3B8' }} />{selectedContact.position}</div>
-                  <div className="flex items-center gap-2"><IconPhone size={12} style={{ color: '#94A3B8' }} />{selectedContact.phone}</div>
-                  <div className="flex items-center gap-2"><IconMail size={12} style={{ color: '#94A3B8' }} />{selectedContact.email}</div>
-                </div>
-
-                <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: '12px' }}>
-                  <div className="text-xs font-semibold mb-2" style={{ color: '#374151' }}>
-                    Card held by {activeConnectionsForContact(selectedContact.id).length} employee{activeConnectionsForContact(selectedContact.id).length > 1 ? 's' : ''}
-                  </div>
-                  <div className="space-y-2">
-                    {getOwnersForContact(selectedContact).map(emp => (
-                      <button
-                        key={emp.id}
-                        onClick={() => { setSelectedContactId(null); setSelectedEmployeeId(emp.id); }}
-                        className="w-full flex items-center gap-2 p-2 rounded-lg text-left hover:bg-gray-50 transition-colors"
-                      >
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0" style={{ background: emp.avatarColor }}>
-                          {emp.name.slice(0, 1)}
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium" style={{ color: '#0F172A' }}>{emp.name}</div>
-                          <div className="text-xs" style={{ color: '#94A3B8' }}>{emp.position}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
     </div>
-  );
+    {selected && <ContactPanel contactId={selected.id} navigate={navigate} onClose={() => setContactId(null)} />}
+  </div>;
 }
