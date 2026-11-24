@@ -9,15 +9,15 @@ interface Props {
   companyName: string;
   userId: string;
   companyId?: string;
+  initialScope?: string;
 }
 
-export default function BusinessNetwork({ navigate, companyName, userId, companyId }: Props) {
+export default function BusinessNetwork({ navigate, companyName, userId, companyId, initialScope }: Props) {
   const [search, setSearch] = useState('');
-  const [scope, setScope] = useState('all');
+  const [scope, setScope] = useState(initialScope === 'mine' ? 'mine' : 'all');
   const [employeeId, setEmployeeId] = useState('');
   const [companyFilter, setCompanyFilter] = useState(companyId || '');
   const [contactId, setContactId] = useState<string | null>(null);
-  const selected = contacts.find(contact => contact.id === contactId);
   const query = search.trim().toLocaleLowerCase();
   const shown = contacts.filter(contact => {
     const company = companies.find(item => item.id === contact.companyId);
@@ -29,6 +29,7 @@ export default function BusinessNetwork({ navigate, companyName, userId, company
   });
   const groups = companies.map(company => ({ company, people: shown.filter(contact => contact.companyId === company.id) }))
     .filter(group => group.people.length).sort((a, b) => a.company.name.localeCompare(b.company.name, 'ko'));
+  const selected = shown.find(contact => contact.id === contactId);
 
   return <div className="flex min-w-0 flex-col xl:flex-row">
     <div className="min-w-0 flex-1 space-y-5 p-4 md:p-6">

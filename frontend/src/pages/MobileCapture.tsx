@@ -306,6 +306,7 @@ export default function MobileCapture({
                   disabled={
                     busy ||
                     !hasRequiredFields(draft.fields) ||
+                    !!reviewIssues(draft.fields).length ||
                     unresolvedLink(active, draft)
                   }
                   onClick={() => save([active])}

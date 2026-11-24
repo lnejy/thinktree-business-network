@@ -24,8 +24,8 @@ export default function CompanyDetail({ navigate, companyId }: Props) {
   const companyContacts = contacts.filter(c => c.companyId === company.id);
 
   return (
-    <div className="flex h-full">
-      <div className={`flex-1 p-6 space-y-5 overflow-auto ${selectedNode ? 'pr-3' : ''}`}>
+    <div className="flex min-w-0 h-full flex-col xl:flex-row">
+      <div className={`min-w-0 flex-1 p-4 md:p-6 space-y-5 overflow-auto ${selectedNode ? 'pr-3' : ''}`}>
         {/* Company header */}
         <div className="bg-white rounded-xl border p-6" style={{ borderColor: '#E2E8F0' }}>
           <div className="flex items-start gap-4">
@@ -51,7 +51,7 @@ export default function CompanyDetail({ navigate, companyId }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-4 mt-5 pt-5" style={{ borderTop: '1px solid #F1F5F9' }}>
+          <div className="grid grid-cols-2 gap-4 mt-5 pt-5 sm:grid-cols-4" style={{ borderTop: '1px solid #F1F5F9' }}>
             {[
               { label: 'Cards', value: company.cardCount },
               { label: 'Contacts', value: company.contactCount },

@@ -119,7 +119,7 @@ export default function App() {
       case 'add-card':
         return <MobileCapture navigate={navigate} />;
       case 'incoming-cards':
-        return <IncomingCards navigate={navigate} />;
+        return <IncomingCards key={`${params.ownerId || ''}/${params.status || ''}`} navigate={navigate} initialOwner={params.ownerId} initialStatus={params.status} />;
       case 'ai-recognition':
         return <AIRecognition key={params.cardId} navigate={navigate} cardId={params.cardId} />;
       case 'companies':
@@ -129,7 +129,7 @@ export default function App() {
       case 'org-chart':
         return <OrgChart navigate={navigate} />;
       case 'business-network':
-        return <BusinessNetwork key={params.companyId} navigate={navigate} companyName={user.company} userId={user.id} companyId={params.companyId} />;
+        return <BusinessNetwork key={`${params.companyId || ''}/${params.scope || ''}`} navigate={navigate} companyName={user.company} userId={user.id} companyId={params.companyId} initialScope={params.scope} />;
       case 'search':
         return <Search navigate={navigate} />;
       case 'admin':

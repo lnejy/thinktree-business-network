@@ -18,8 +18,9 @@ export function LinkReview({
   onChange: (options: ReviewOptions) => void
 }) {
   const needsChoice = needsLinkChoice(card, 'person', options) || needsLinkChoice(card, 'company', options)
+  const hasComparison = card.status !== 'reviewed' && linkCandidates(card, 'person').some(candidate => candidate.reasons.length)
   return (
-    <details key={String(needsChoice)} open={needsChoice || undefined} className="rounded-lg border border-slate-200 p-4">
+    <details key={String(needsChoice)} open={needsChoice || hasComparison || undefined} className="rounded-lg border border-slate-200 p-4">
       <summary className="cursor-pointer font-semibold text-sm">{needsChoice ? '기존 명함과 연결 확인' : '소속 날짜 및 연결 설정'}</summary>
       <div className="mt-3 space-y-3">
       <label className="block text-sm">
@@ -58,6 +59,7 @@ export function LinkReview({
             <label className="block text-sm">
               {kind === "person" ? "인물 연결" : "회사 연결"}
               <select
+                aria-label={kind === 'person' ? '인물 연결' : '회사 연결'}
                 value={options[key] || ""}
                 onChange={(event) =>
                   onChange({ ...options, [key]: event.target.value || null })
