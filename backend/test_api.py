@@ -87,6 +87,26 @@ class CardApiTests(unittest.TestCase):
         self.assertEqual(Store(self.temp.name).get(card['id'])['extracted']['company']['value'], '테스트 주식회사')
         self.assertEqual(self.client.delete(f'/api/cards/{card["id"]}').status_code, 409)
 
+    def test_ownership_transfer_removal_and_stale_save(self):
+        card = self.sample()
+        fields = card['extracted']
+        fields['company']['value'] = 'Example'
+        self.assertEqual(self.client.put(f'/api/cards/{card["id"]}/review', json=dict(extracted=fields, action='confirm')).status_code, 200)
+        url = f'/api/cards/{card["id"]}/ownership'
+        body = dict(ownerId='e2', ownerIds=['e2', 'e3'], expectedOwnerId='e2', expectedOwnerIds=['e2'])
+        self.login('seungmin')
+        self.assertEqual(self.client.put(url, json=body).status_code, 403)
+        self.login('beomchang')
+        self.assertEqual(self.client.put(url, json=body).status_code, 200)
+        self.assertEqual(self.client.put(url, json=body).status_code, 409)
+        body.update(ownerId='e3', ownerIds=['e3'], expectedOwnerIds=['e2', 'e3'])
+        self.assertEqual(self.client.put(url, json={**body, 'ownerIds': ['unknown']}).status_code, 422)
+        response = self.client.put(url, json=body)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['ownerIds'], ['e3'])
+        self.assertEqual(response.json()['ownerId'], 'e3')
+        self.assertEqual(self.client.put(url, json=body).status_code, 403)
+
     def test_signup_sessions_and_card_access(self):
         other = TestClient(api.app)
         self.assertEqual(other.get('/api/cards').status_code, 401)

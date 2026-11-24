@@ -305,6 +305,33 @@ class CardOwners(BaseModel):
     ownerIds: list[str] = Field(min_length=1, max_length=100)
 
 
+class OwnershipUpdate(CardOwners):
+    model_config = ConfigDict(extra='forbid')
+    ownerId: str
+    expectedOwnerId: str
+    expectedOwnerIds: list[str] = Field(min_length=1, max_length=100)
+
+
+@private.put('/api/cards/{card_id}/ownership')
+def update_ownership(card_id: str, body: OwnershipUpdate, user=Depends(require_user)):
+    with store.lock, store.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        card = get_card(card_id, user, edit=True)
+        if card['status'] != 'reviewed':
+            raise HTTPException(409, '확정된 명함의 담당자를 변경할 수 있습니다.')
+        if body.expectedOwnerId != card['ownerId'] or set(body.expectedOwnerIds) != set(card_owners(card)):
+            raise HTTPException(409, '다른 팀원이 먼저 변경했습니다. 최신 명함을 확인한 후 다시 저장하세요.')
+        owners = list(dict.fromkeys(body.ownerIds))
+        if body.ownerId not in owners:
+            raise HTTPException(422, '주 담당자를 명함 받은 사람에 포함하세요.')
+        employee_ids = {employee['id'] for employee in Accounts(store).employees()}
+        if not set(owners) <= employee_ids:
+            raise HTTPException(422, '팀에 속한 사람을 선택하세요.')
+        card.update(ownerId=body.ownerId, ownerIds=owners)
+        db.execute('UPDATE cards SET body=? WHERE id=?', (json.dumps(card, ensure_ascii=False), card_id))
+        return card
+
+
 @private.put('/api/cards/{card_id}/owners')
 def set_owners(card_id: str, body: CardOwners, user=Depends(require_user)):
     with store.lock:
