@@ -129,7 +129,7 @@ export default function App() {
       case 'org-chart':
         return <OrgChart navigate={navigate} />;
       case 'business-network':
-        return <BusinessNetwork navigate={navigate} companyName={user.company} />;
+        return <BusinessNetwork key={params.companyId} navigate={navigate} companyName={user.company} userId={user.id} companyId={params.companyId} />;
       case 'search':
         return <Search navigate={navigate} />;
       case 'admin':
