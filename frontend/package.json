@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node test-data.cjs",
     "test:e2e": "node test-flow.cjs",
-    "test:evaluation": "node test-evaluation.cjs"
+    "test:evaluation": "node test-evaluation.cjs",
+    "test:product": "node test-product.cjs"
   },
   "dependencies": {
     "react": "^19.0.0",

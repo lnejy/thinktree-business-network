@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { PageName } from '../Layout';
 import { IconSearch } from '../icons';
-import { incomingCards, confirmedCards, formatDateTime } from '../data';
+import { cardOwners, employees, incomingCards, confirmedCards, formatDateTime } from '../data';
 import { isLiveCard, refreshCards, request, type LiveCard } from '../cardApi';
 import { reviewIssues } from '../reviewGuidance';
 
@@ -17,14 +17,17 @@ function statusGroup(card: LiveCard) {
   return ['uploading', 'ocr_processing', 'ai_structuring'].includes(card.status) ? 'processing' : card.status;
 }
 
-export default function IncomingCards({ navigate }: {
+export default function IncomingCards({ navigate, initialOwner = '', initialStatus }: {
   navigate: (page: PageName, params?: Record<string, string>) => void;
+  initialOwner?: string;
+  initialStatus?: string;
 }) {
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<(typeof filters)[number][0]>('ready_for_review');
+  const [filter, setFilter] = useState<(typeof filters)[number][0]>(filters.find(([key]) => key === initialStatus)?.[0] || 'ready_for_review');
+  const [owner, setOwner] = useState(initialOwner);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const cards = [...incomingCards, ...confirmedCards].filter(card => isLiveCard(card.id))
+  const cards = [...incomingCards, ...confirmedCards].filter(card => isLiveCard(card.id) && (!owner || cardOwners(card).includes(owner)))
     .sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt)) as LiveCard[];
   const query = search.trim().toLowerCase();
   const shown = cards.filter(card =>
@@ -48,6 +51,7 @@ export default function IncomingCards({ navigate }: {
       <div><h1 className="text-xl font-bold">수신 명함</h1><p className="mt-1 text-sm text-slate-600">저장하기 전에 사진과 명함 정보를 확인하세요.</p></div>
       <button onClick={() => navigate('add-card')} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white">명함 등록</button>
     </header>
+    <label className="block text-sm">받은 사람 <select aria-label="수신 명함 받은 사람" value={owner} onChange={event => setOwner(event.target.value)} className="ml-2 rounded-lg border border-slate-300 bg-white p-2"><option value="">팀 전체</option>{employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label>
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3">
         <div className="flex flex-wrap gap-1" aria-label="명함 상태">

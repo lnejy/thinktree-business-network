@@ -51,8 +51,9 @@ const { baseUrl, login, teamAccess } = require('./test-login.cjs');
     for (const { name } of teamAccess().accounts) {
       await teammate.locator('.network-node-employee').filter({ hasText: name }).waitFor();
     }
-    await teammate.locator('.network-node-contact').filter({ hasText: companyName }).click();
-    await teammate.getByText('고범창', { exact: true }).last().waitFor();
+    await teammate.getByLabel('네트워크 검색').fill(companyName);
+    await teammate.locator('.network-node-contact:visible').first().click();
+    await teammate.getByRole('complementary', { name: '인물 상세' }).getByText('고범창', { exact: false }).waitFor();
     await teammate.getByRole('button', { name: '계정 메뉴', exact: true }).click();
     await teammate.getByRole('button', { name: '로그아웃', exact: true }).click();
     await teammate.getByRole('heading', { name: 'ThinkTree 로그인' }).waitFor();
