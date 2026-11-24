@@ -4,6 +4,7 @@ import { PageName, Badge, Btn } from '../Layout';
 import { IconBuilding, IconUser, IconCard, IconArrowRight, IconMapPin, IconGlobe, IconPhone, IconMail, IconX } from '../icons';
 import { companies, contacts, employees } from '../data';
 import type { OrgNode } from '../data';
+import { CompanyRelationships } from '../components/CompanyRelationships';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -86,54 +87,8 @@ export default function CompanyDetail({ navigate, companyId }: Props) {
           })}
         </div>
 
-        {/* Overview tab */}
-        {tab === 'overview' && (
-          <div className="grid grid-cols-2 gap-5">
-            <div className="bg-white rounded-xl border p-5" style={{ borderColor: '#E2E8F0' }}>
-              <h3 className="text-sm font-semibold mb-4" style={{ color: '#0F172A' }}>Recent Contacts</h3>
-              <div className="space-y-3">
-                {companyContacts.slice(0, 4).map(contact => (
-                  <div key={contact.id} className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: '#EFF6FF', color: '#2563EB' }}>
-                      {contact.name.slice(0, 1)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium" style={{ color: '#0F172A' }}>{contact.name}</div>
-                      <div className="text-xs truncate" style={{ color: '#94A3B8' }}>{contact.department} · {contact.position}</div>
-                    </div>
-                    <div className="text-xs" style={{ color: '#94A3B8' }}>
-                      {contact.ownerIds.length} owner{contact.ownerIds.length > 1 ? 's' : ''}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border p-5" style={{ borderColor: '#E2E8F0' }}>
-              <h3 className="text-sm font-semibold mb-4" style={{ color: '#0F172A' }}>Internal Connections</h3>
-              <div className="space-y-3">
-                {employees.filter(e => companyContacts.some(c => c.ownerIds.includes(e.id))).map(emp => {
-                  const ownedContacts = companyContacts.filter(c => c.ownerIds.includes(emp.id));
-                  return (
-                    <div key={emp.id} className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0" style={{ background: emp.avatarColor }}>
-                        {emp.name.slice(0, 1)}
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-sm font-medium" style={{ color: '#0F172A' }}>{emp.name}</div>
-                        <div className="text-xs" style={{ color: '#94A3B8' }}>{emp.position}</div>
-                      </div>
-                      <div className="text-xs px-2 py-0.5 rounded" style={{ background: '#EFF6FF', color: '#2563EB', fontFamily: 'DM Mono, monospace' }}>
-                        {ownedContacts.length} cards
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
+        {tab === 'overview' && <CompanyRelationships companyId={company.id} navigate={navigate} />}
 
-        {/* Org chart tab */}
         {tab === 'org' && (
           <div className="bg-white rounded-xl border" style={{ borderColor: '#E2E8F0' }}>
             <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: '#F1F5F9' }}>
@@ -213,7 +168,7 @@ export default function CompanyDetail({ navigate, companyId }: Props) {
           <div className="bg-white rounded-xl border p-6 flex items-center justify-center" style={{ borderColor: '#E2E8F0', minHeight: '300px' }}>
             <div className="text-center">
               <p className="text-sm" style={{ color: '#64748B' }}>View in full Business Network</p>
-              <div className="mt-3"><Btn variant="primary" onClick={() => navigate('business-network')}>Open Business Network</Btn></div>
+              <div className="mt-3"><Btn variant="primary" onClick={() => navigate('business-network', { companyId: company.id })}>Open Business Network</Btn></div>
             </div>
           </div>
         )}
