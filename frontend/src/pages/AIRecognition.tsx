@@ -5,6 +5,7 @@ import { saveReview, request, refreshCards, isLiveCard, needsLinkChoice, type Li
 import { OriginalImage } from '../components/CardEvidence';
 import { CardFieldEditor, hasRequiredFields, type CardFields } from '../components/CardFields';
 import { LinkReview } from '../components/LinkReview';
+import { reviewIssues } from '../reviewGuidance';
 
 export default function AIRecognition({ navigate, cardId }: {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -35,6 +36,10 @@ function ReviewForm({ card, navigate }: {
     if (busy) return;
     if ((action === 'confirm' || reviewed) && !hasRequiredFields(fields)) {
       setError('회사명과 이름을 입력해 주세요.');
+      return;
+    }
+    if ((action === 'confirm' || reviewed) && reviewIssues(fields).length) {
+      setError(reviewIssues(fields).map(issue => issue.message).join(' · '));
       return;
     }
     if (action === 'confirm' && needsLink) {

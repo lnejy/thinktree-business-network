@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { BusinessCard } from '../data';
+import { reviewIssues } from '../reviewGuidance';
 
 export type CardFields = BusinessCard['extracted'];
 const labels: Record<keyof CardFields, string> = {
@@ -22,7 +23,8 @@ export function CardFieldEditor({ initial, fields, onChange, disabled }: {
   disabled?: boolean;
 }) {
   const [showAll, setShowAll] = useState(false);
-  const focus = keys.filter(key => required(key) || (initial[key].value && initial[key].confidence !== 'high'));
+  const issues = reviewIssues(fields);
+  const focus = keys.filter(key => required(key) || issues.some(issue => issue.field === key) || (initial[key].value && initial[key].confidence !== 'high'));
   const remaining = keys.filter(key => !focus.includes(key) && fields[key].value);
   const missing = !hasRequiredFields(fields);
   return <section className="space-y-4">
@@ -35,12 +37,13 @@ export function CardFieldEditor({ initial, fields, onChange, disabled }: {
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {(showAll ? keys : focus).map(key => <label key={key} className="min-w-0 text-sm font-medium text-slate-800">
         {labels[key]}{required(key) && <span className="text-slate-500"> · 필수</span>}
-        <input value={fields[key].value} disabled={disabled} aria-required={required(key)}
+        <input value={fields[key].value} disabled={disabled} aria-required={required(key)} aria-invalid={issues.some(issue => issue.field === key)}
           onChange={event => {
             const value = event.target.value;
             onChange({ ...fields, [key]: { value, confidence: value.trim() ? 'high' : 'low' } });
           }}
           className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600" />
+        {issues.filter(issue => issue.field === key).map(issue => <span key={issue.message} className="mt-1 block text-xs text-amber-800">{issue.message}</span>)}
       </label>)}
     </div>
     {missing && <p className="text-sm text-slate-600">비어 있는 회사명과 이름은 사진을 보고 입력해 주세요.</p>}
