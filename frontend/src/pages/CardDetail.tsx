@@ -5,6 +5,7 @@ import { cardOwners, confirmedCards, incomingCards, employees, companies, contac
 import { isLiveCard, refreshCards, request, type LiveCard } from '../cardApi';
 import { OriginalImage } from '../components/CardEvidence';
 import { AffiliationHistory } from '../components/AffiliationHistory';
+import { OwnershipEditor } from '../components/OwnershipEditor';
 
 interface Props {
   navigate: (page: PageName, params?: Record<string, string>) => void;
@@ -113,6 +114,7 @@ export default function CardDetail({ navigate, cardId, userId, isAdmin }: Props)
                   </div>
                   <div className="flex-1">
                     <div className="text-sm font-medium" style={{ color: '#0F172A' }}>{emp.name}</div>
+                    {emp.id === card.ownerId && <span className="text-xs text-blue-700">주 담당자</span>}
                     <div className="text-xs" style={{ color: '#64748B' }}>{emp.company}</div>
                   </div>
                 </div>
@@ -127,6 +129,7 @@ export default function CardDetail({ navigate, cardId, userId, isAdmin }: Props)
                 </form>
               )}
               {shareError && <p role="alert" className="text-sm text-red-700">{shareError}</p>}
+              {canEdit && card.status === 'reviewed' && <OwnershipEditor card={card} />}
             </div>
           </div>
         </div>
