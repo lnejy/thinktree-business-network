@@ -3,6 +3,7 @@ import type { PageName } from '../Layout';
 import { IconSearch } from '../icons';
 import { incomingCards, confirmedCards, formatDateTime } from '../data';
 import { isLiveCard, refreshCards, request, type LiveCard } from '../cardApi';
+import { reviewIssues } from '../reviewGuidance';
 
 const filters = [
   ['ready_for_review', '확인 필요'],
@@ -63,6 +64,7 @@ export default function IncomingCards({ navigate }: {
       {shown.length ? <ul className="divide-y divide-slate-100">{shown.map(card => {
         const name = card.extracted.name.value || card.sourceFileName || '이름 미확인';
         const status = statusGroup(card);
+        const issues = reviewIssues(card.extracted);
         return <li key={card.id} className="flex items-center gap-3 p-3 sm:p-4">
           <button aria-label={`명함 상세: ${card.sourceFileName || name}`} onClick={() => navigate('card-detail', { cardId: card.id })} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left hover:bg-slate-50">
             <span className="flex h-12 w-20 shrink-0 items-center justify-center rounded bg-slate-100">
@@ -70,6 +72,7 @@ export default function IncomingCards({ navigate }: {
             </span>
             <span className="min-w-0"><span className="block truncate text-sm font-semibold">{name}</span>
               <span className="block truncate text-xs text-slate-600">{card.extracted.company.value || '회사 미확인'} · {formatDateTime(card.uploadedAt)}</span>
+              {status === 'ready_for_review' && <span className="mt-1 block text-xs text-amber-800">{issues.length ? issues.map(issue => issue.message).join(' · ') : card.warnings?.length ? '원본과 추출 정보를 비교해 주세요' : '연락처와 소속 정보를 확인하면 저장할 수 있습니다'}</span>}
             </span>
           </button>
           {status === 'ready_for_review' && isLiveCard(card.id) && <button onClick={() => navigate('ai-recognition', { cardId: card.id })} className="shrink-0 rounded-lg border border-blue-200 px-3 py-2 text-sm text-blue-800">검토</button>}

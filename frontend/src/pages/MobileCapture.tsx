@@ -12,6 +12,7 @@ import {
 import { LinkReview } from "../components/LinkReview"
 import { OriginalImage } from "../components/CardEvidence"
 import { CardFieldEditor, hasRequiredFields, type CardFields } from "../components/CardFields"
+import { reviewIssues } from '../reviewGuidance'
 
 type Draft = {
   fields: CardFields
@@ -64,6 +65,7 @@ export default function MobileCapture({
     return (
       card.status === "ready_for_review" &&
       hasRequiredFields(draft.fields) &&
+      !reviewIssues(draft.fields).length &&
       !unresolvedLink(card, draft)
     )
   })
@@ -102,6 +104,10 @@ export default function MobileCapture({
     try {
       for (const card of targets) {
         const draft = getDraft(card)
+        if (reviewIssues(draft.fields).length) {
+          errors.push(`${card.sourceFileName || draft.fields.name.value} · ${reviewIssues(draft.fields).map(issue => issue.message).join(' · ')}`)
+          continue
+        }
         if (unresolvedLink(card, draft)) {
           errors.push(
             `${card.sourceFileName || draft.fields.name.value} · 기존 명함 연결을 확인하세요.`,
